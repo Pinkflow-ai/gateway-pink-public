@@ -1,0 +1,91 @@
+# Gateway.pink — gateway + observability stack (logs only).
+#
+# The gateway emits pino JSON to stdout (no payloads — see src/log.ts redact
+# paths). Promtail scrapes the container logs and ships them to Loki. Grafana
+# reads from Loki with a pre-provisioned datasource and dashboard, so it works
+# with zero manual UI setup.
+#
+# Usage:
+#   docker compose up
+#   curl http://localhost:3000/health           # gateway
+#   open http://localhost:3001                  # grafana (admin/admin)
+services:
+  gateway:
+    build: .
+    image: gateway-pink-gateway:latest
+    container_name: gateway-pink-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      LOG_LEVEL: "info"
+      RATE_LIMIT_PER_MINUTE: "60"
+      UPSTREAM_TIMEOUT_MS: "5000"
+      UPSTREAM_USER_AGENT: "Gateway.pink (https://gateway.pink)"
+      BILLING_MODE: "off"
+      PRICING_MANIFEST_PATH: "./config/pricing.manifest.json"
+      # No GATEWAY_DEV_KEYS → open mode. Set one to require a Bearer token.
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks: [obs]
+
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: gateway-pink-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    restart: unless-stopped
+    networks: [obs]
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    container_name: gateway-pink-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      # Scrape the gateway's container logs.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./observability/promtail/config.yml:/etc/promtail/config.yml:ro
+    restart: unless-stopped
+    depends_on: [loki]
+    networks: [obs]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: gateway-pink-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Provisioning is read-only and mounted below.
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/dashboard-files:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+    depends_on: [loki]
+    networks: [obs]
+
+networks:
+  obs:
+
+volumes:
+  loki-data:
+  grafana-data:

@@ -1,0 +1,31 @@
+{
+  "name": "@gateway-pink/public",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gateway.pink public gateway — route handlers, storage-policy, and the no-payload-logging guard test.",
+  "main": "./dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node --import tsx/esm src/server.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "fastify": "^5.2.1",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "ua-parser-js": "1.0.37",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ua-parser-js": "^0.7.39",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
+  }
+}

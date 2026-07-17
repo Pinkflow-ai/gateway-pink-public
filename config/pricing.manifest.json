@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "creditUsdMicros": 1000,
+  "routes": {
+    "GET /v1/compute/dummy": {
+      "kind": "free",
+      "credits": 0
+    },
+    "GET /v1/compute/password": {
+      "kind": "free",
+      "credits": 0
+    },
+    "GET /v1/compute/time": {
+      "kind": "free",
+      "credits": 0
+    },
+    "GET /v1/compute/ua": {
+      "kind": "free",
+      "credits": 0
+    },
+    "GET /v1/compute/uuid": {
+      "kind": "free",
+      "credits": 0
+    },
+    "GET /v1/dns/resolve": {
+      "kind": "free",
+      "credits": 0
+    },
+    "GET /v1/phone/lookup": {
+      "kind": "flat",
+      "credits": 12
+    },
+    "GET /v1/weather": {
+      "kind": "free",
+      "credits": 0
+    },
+    "GET /v1/whois/lookup": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/ai/summarize": {
+      "kind": "metered",
+      "unit": "provider-cost",
+      "provider": "openrouter",
+      "model": "google/gemini-2.5-flash-lite",
+      "promptUsdMicrosPerMillionTokens": 100000,
+      "completionUsdMicrosPerMillionTokens": 400000,
+      "maxInputCharacters": 50000,
+      "maxOutputTokens": 1024,
+      "minimumCredits": 1,
+      "reserveCredits": 100,
+      "targetMarginBps": 2000,
+      "providerFeeBps": 550
+    },
+    "POST /v1/compute/base64": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/hash": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/hmac": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/html": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/json": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/jwt/decode": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/slug": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/units": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/url": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/email/validate": {
+      "kind": "flat",
+      "credits": 6
+    },
+    "POST /v1/screenshot": {
+      "kind": "flat",
+      "credits": 6
+    }
+  }
+}
