@@ -25,22 +25,22 @@ describe('in-memory usage meter', () => {
   });
 
   it('charges zero when a reservation is released after failure', async () => {
-    const meter = new MemoryUsageMeter(10);
-    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 6);
+    const meter = new MemoryUsageMeter(20);
+    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17);
     if (!reserved.ok) throw new Error(reserved.reason);
-    expect(await meter.release(reserved.reservation)).toEqual({ balanceAfter: 10 });
+    expect(await meter.release(reserved.reservation)).toEqual({ balanceAfter: 20 });
   });
 
   it('rejects replay of a non-active internal request before an upstream can run again', async () => {
-    const meter = new MemoryUsageMeter(10);
-    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 6);
+    const meter = new MemoryUsageMeter(20);
+    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17);
     if (!reserved.ok) throw new Error(reserved.reason);
-    await meter.settle(reserved.reservation, { actualCredits: 6 });
+    await meter.settle(reserved.reservation, { actualCredits: 17 });
 
-    expect(await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 6)).toEqual({
+    expect(await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17)).toEqual({
       ok: false,
       reason: 'billing_conflict',
-      availableCredits: 4,
+      availableCredits: 3,
     });
   });
 
@@ -74,20 +74,25 @@ describe('metered pricing math', () => {
     maxOutputTokens: 1_024,
     minimumCredits: 1,
     reserveCredits: 100,
-    targetMarginBps: 2_000,
+    targetMarginBps: 8_000,
     providerFeeBps: 550,
   };
 
   it('applies the provider fee and margin using integer microdollars', () => {
-    expect(creditsForProviderCost(1_000, pricing)).toBe(2);
+    expect(creditsForProviderCost(1_000, pricing)).toBe(6);
   });
 
   it('uses UTF-8 bytes as a conservative input-token ceiling for preflight', () => {
     const ascii = estimateMeteredCredits('hello', pricing);
     const unicode = estimateMeteredCredits('🚀'.repeat(10_000), pricing);
+    const maximumBytesWithinCharacterLimit = '\u0800'.repeat(50_000);
     expect(ascii).toBeGreaterThanOrEqual(1);
     expect(unicode).toBeGreaterThan(ascii);
     expect(estimateMeteredCredits('x'.repeat(50_000), pricing)).toBeLessThanOrEqual(100);
+    expect(maximumBytesWithinCharacterLimit).toHaveLength(50_000);
+    expect(estimateMeteredCredits(maximumBytesWithinCharacterLimit, pricing)).toBeLessThanOrEqual(
+      pricing.reserveCredits,
+    );
   });
 
   it('prices preflight from the output cap declared on the request', () => {

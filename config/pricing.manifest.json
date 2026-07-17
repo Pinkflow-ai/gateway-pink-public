@@ -28,7 +28,7 @@
     },
     "GET /v1/phone/lookup": {
       "kind": "flat",
-      "credits": 12
+      "credits": 40
     },
     "GET /v1/weather": {
       "kind": "free",
@@ -49,7 +49,7 @@
       "maxOutputTokens": 1024,
       "minimumCredits": 1,
       "reserveCredits": 100,
-      "targetMarginBps": 2000,
+      "targetMarginBps": 8000,
       "providerFeeBps": 550
     },
     "POST /v1/compute/base64": {
@@ -90,11 +90,11 @@
     },
     "POST /v1/email/validate": {
       "kind": "flat",
-      "credits": 6
+      "credits": 17
     },
     "POST /v1/screenshot": {
       "kind": "flat",
-      "credits": 6
+      "credits": 20
     }
   }
 }
