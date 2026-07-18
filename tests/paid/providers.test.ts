@@ -42,6 +42,17 @@ describe('paid provider adapters', () => {
     });
   });
 
+  it('refuses to bill a malformed Abstract success body', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      email: 'person@example.com', deliverability: 'DELIVERABLE', quality_score: '0.97',
+    }), { status: 200 }));
+    const result = await createEmailValidationProvider('secret', fetcher).execute({ email: 'person@example.com' }, ctx);
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'upstream_error', message: 'Abstract returned an invalid response' },
+    });
+  });
+
   it('uses Twilio Lookup v2 line type intelligence', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       phone_number: '+14159929960', national_format: '(415) 992-9960',
@@ -52,6 +63,15 @@ describe('paid provider adapters', () => {
     if (!result.ok) throw new Error(result.error.message);
     expect(result.data).toMatchObject({ number: '+14159929960', valid: true, lineType: 'nonFixedVoip' });
     expect(fetcher.mock.calls[0][1]?.headers).toMatchObject({ authorization: expect.stringMatching(/^Basic /) });
+  });
+
+  it('refuses to bill a malformed Twilio success body', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ valid: 'yes' }), { status: 200 }));
+    const result = await createPhoneLookupProvider('AC123', 'token', fetcher).execute({ number: '+14159929960' }, ctx);
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'upstream_error', message: 'Twilio returned an invalid response' },
+    });
   });
 
   it('returns ScreenshotOne temporary URLs instead of proxying image bytes', async () => {

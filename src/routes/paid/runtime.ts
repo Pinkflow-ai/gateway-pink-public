@@ -1,6 +1,6 @@
 import type { FastifyRequest } from 'fastify';
 import { MemoryUsageMeter } from '../../billing/memory.js';
-import { flatPrice, loadPricingManifest, meteredPrice } from '../../billing/manifest.js';
+import { browserTimePrice, flatPrice, loadPricingManifest, meteredPrice } from '../../billing/manifest.js';
 import { UnavailableUsageMeter } from '../../billing/unavailable.js';
 import { config } from '../../config.js';
 import { createSummarizeProvider } from '../../providers/ai/openrouter.js';
@@ -8,6 +8,7 @@ import { createEmailValidationProvider } from '../../providers/email/abstract.js
 import { createPhoneLookupProvider } from '../../providers/phone/twilio.js';
 import { createScreenshotProvider } from '../../providers/screenshot/screenshotone.js';
 import type { PaidRouteDependencies } from './index.js';
+import { createCloudflareBrowserProvider } from '../../providers/browser/cloudflare.js';
 
 export function createPaidRouteDependencies(): PaidRouteDependencies {
   const manifest = loadPricingManifest(config.pricingManifestPath);
@@ -25,6 +26,9 @@ export function createPaidRouteDependencies(): PaidRouteDependencies {
       phone: flatPrice(manifest, 'GET /v1/phone/lookup'),
       screenshot: flatPrice(manifest, 'POST /v1/screenshot'),
       summarize: summarizePricing,
+      browserScreenshot: browserTimePrice(manifest, 'POST /v1/browser/screenshot'),
+      browserPdf: browserTimePrice(manifest, 'POST /v1/browser/pdf'),
+      browserMarkdown: browserTimePrice(manifest, 'POST /v1/browser/markdown'),
     },
     emailProvider: createEmailValidationProvider(config.abstractEmailApiKey),
     phoneProvider: createPhoneLookupProvider(config.twilioAccountSid, config.twilioAuthToken),
@@ -33,6 +37,18 @@ export function createPaidRouteDependencies(): PaidRouteDependencies {
       config.openRouterApiKey,
       summarizePricing.model,
       summarizePricing,
+    ),
+    browserScreenshotProvider: createCloudflareBrowserProvider(
+      'screenshot', config.cloudflareAccountId, config.cloudflareApiToken,
+      browserTimePrice(manifest, 'POST /v1/browser/screenshot').maximumBrowserMs,
+    ),
+    browserPdfProvider: createCloudflareBrowserProvider(
+      'pdf', config.cloudflareAccountId, config.cloudflareApiToken,
+      browserTimePrice(manifest, 'POST /v1/browser/pdf').maximumBrowserMs,
+    ),
+    browserMarkdownProvider: createCloudflareBrowserProvider(
+      'markdown', config.cloudflareAccountId, config.cloudflareApiToken,
+      browserTimePrice(manifest, 'POST /v1/browser/markdown').maximumBrowserMs,
     ),
   };
 }

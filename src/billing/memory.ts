@@ -8,7 +8,9 @@ import type {
 } from './types.js';
 
 interface ActiveReservation extends CreditReservation {
-  state: 'active' | 'settled' | 'released';
+  state: 'active' | 'settlement_pending' | 'settled' | 'released';
+  pendingUsage?: SettlementUsage;
+  settlementResult?: SettlementResult;
 }
 
 /**
@@ -31,40 +33,54 @@ export class MemoryUsageMeter implements UsageMeter {
 
   private availableCredits(orgId: string): number {
     const holds = [...this.reservations.values()]
-      .filter((item) => item.orgId === orgId && item.state === 'active')
+      .filter((item) => item.orgId === orgId && (item.state === 'active' || item.state === 'settlement_pending'))
       .reduce((sum, item) => sum + item.reservedCredits, 0);
     return this.balance - holds;
   }
 
-  async reserve(orgId: string, requestId: string, route: string, credits: number): Promise<ReserveResult> {
+  async reserve(orgId: string, requestId: string, route: string, credits: number, inputFingerprint: string): Promise<ReserveResult> {
     if (!Number.isSafeInteger(credits) || credits <= 0) throw new RangeError('reserved credits must be positive');
     const availableCredits = this.availableCredits(orgId);
-    if (this.disabledRoutes.has(route)) return { ok: false, reason: 'route_disabled', availableCredits };
-
     const previousId = this.reservationByRequest.get(requestId);
     if (previousId) {
       const previous = this.reservations.get(previousId)!;
       if (previous.orgId !== orgId || previous.route !== route
-        || previous.reservedCredits !== credits || previous.state !== 'active') {
-        return { ok: false, reason: 'billing_conflict', availableCredits };
+        || previous.reservedCredits !== credits || previous.inputFingerprint !== inputFingerprint) {
+        return { ok: false, reason: 'idempotency_mismatch', availableCredits };
       }
-      return { ok: true, reservation: previous, availableCredits };
+      const reason = previous.state === 'active' ? 'request_in_progress'
+        : previous.state === 'settlement_pending' ? 'billing_unknown'
+        : previous.state === 'settled' ? 'request_already_settled'
+        : 'request_already_failed';
+      return { ok: false, reason, availableCredits };
     }
+
+    if (this.disabledRoutes.has(route)) return { ok: false, reason: 'route_disabled', availableCredits };
 
     if (availableCredits < credits) {
       return { ok: false, reason: 'insufficient_credits', availableCredits };
     }
     const reservation: ActiveReservation = {
-      id: randomUUID(), orgId, requestId, route, reservedCredits: credits, state: 'active',
+      id: randomUUID(), orgId, requestId, route, reservedCredits: credits, inputFingerprint, state: 'active',
     };
     this.reservations.set(reservation.id, reservation);
     this.reservationByRequest.set(requestId, reservation.id);
     return { ok: true, reservation, availableCredits: availableCredits - credits };
   }
 
+  async prepare(reservation: CreditReservation, usage: SettlementUsage): Promise<void> {
+    const active = this.reservations.get(reservation.id);
+    if (!active) throw new Error('reservation not found');
+    if (active.state === 'settlement_pending') return;
+    if (active.state !== 'active') throw new Error('reservation is not active');
+    active.pendingUsage = { ...usage };
+    active.state = 'settlement_pending';
+  }
+
   async settle(reservation: CreditReservation, usage: SettlementUsage): Promise<SettlementResult> {
     const active = this.reservations.get(reservation.id);
-    if (!active || active.state !== 'active') throw new Error('reservation is not active');
+    if (active?.state === 'settled' && active.settlementResult) return active.settlementResult;
+    if (!active || active.state !== 'settlement_pending') throw new Error('reservation is not pending settlement');
     if (!Number.isSafeInteger(usage.actualCredits) || usage.actualCredits < 0) {
       throw new RangeError('actual credits must be a non-negative integer');
     }
@@ -73,12 +89,17 @@ export class MemoryUsageMeter implements UsageMeter {
     this.balance -= creditsCharged;
     active.state = 'settled';
     if (providerPriceOverrun) this.disabledRoutes.add(active.route);
-    return { creditsCharged, balanceAfter: this.balance, providerPriceOverrun };
+    active.settlementResult = { creditsCharged, balanceAfter: this.balance, providerPriceOverrun };
+    return active.settlementResult;
   }
 
   async release(reservation: CreditReservation): Promise<{ balanceAfter: number }> {
     const active = this.reservations.get(reservation.id);
     if (active?.state === 'active') active.state = 'released';
     return { balanceAfter: this.balance };
+  }
+
+  async disableRoute(route: string): Promise<void> {
+    this.disabledRoutes.add(route);
   }
 }

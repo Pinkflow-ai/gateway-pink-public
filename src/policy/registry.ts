@@ -39,6 +39,12 @@ export const ROUTE_POLICIES: RoutePolicy[] = [
   { route: 'POST /v1/compute/slug', storagePolicy: 'none', storesPayload: false },
   { route: 'POST /v1/compute/units', storagePolicy: 'none', storesPayload: false },
   { route: 'GET /v1/compute/time', storagePolicy: 'none', storesPayload: false },
+  { route: 'POST /v1/compute/qr', storagePolicy: 'none', storesPayload: false },
+  { route: 'POST /v1/compute/json-schema', storagePolicy: 'none', storesPayload: false },
+  { route: 'POST /v1/compute/csv', storagePolicy: 'none', storesPayload: false },
+  { route: 'POST /v1/compute/color', storagePolicy: 'none', storesPayload: false },
+  { route: 'POST /v1/compute/text-stats', storagePolicy: 'none', storesPayload: false },
+  { route: 'POST /v1/security/password-exposure', storagePolicy: 'none', storesPayload: false },
 
   // data APIs — payload not stored, response cached briefly for quota economy
   { route: 'GET /v1/dns/resolve', storagePolicy: 'cached-ttl', storesPayload: false },
@@ -50,6 +56,9 @@ export const ROUTE_POLICIES: RoutePolicy[] = [
   { route: 'GET /v1/phone/lookup', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/screenshot', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/ai/summarize', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'POST /v1/browser/screenshot', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'POST /v1/browser/pdf', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'POST /v1/browser/markdown', storagePolicy: 'metadata-only', storesPayload: false },
 ];
 
 /** Routes that carry the X-Gateway-No-Store header. */

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { fail, ok, type Provider } from '../_registry.js';
 import { providerFetch, providerJson, type Fetcher } from '../http.js';
 
@@ -10,13 +11,17 @@ interface PhoneOutput {
   lineType: string | null;
   carrier: string | null;
 }
-interface TwilioResponse {
-  phone_number?: string;
-  national_format?: string;
-  country_code?: string;
-  valid?: boolean;
-  line_type_intelligence?: { type?: string; carrier_name?: string; error_code?: number | null } | null;
-}
+const twilioResponse = z.object({
+  phone_number: z.string().min(1),
+  national_format: z.string().min(1).nullable().optional(),
+  country_code: z.string().min(1).nullable().optional(),
+  valid: z.boolean(),
+  line_type_intelligence: z.object({
+    type: z.string().min(1).nullable().optional(),
+    carrier_name: z.string().min(1).nullable().optional(),
+    error_code: z.number().int().nullable().optional(),
+  }).passthrough().nullable().optional(),
+}).passthrough();
 
 export function createPhoneLookupProvider(accountSid: string, authToken: string, fetcher: Fetcher = fetch): Provider<PhoneInput, PhoneOutput> {
   return {
@@ -35,15 +40,18 @@ export function createPhoneLookupProvider(accountSid: string, authToken: string,
         },
       }, 'Twilio');
       if (!response.ok) return response;
-      const raw = await providerJson<TwilioResponse>(response.data, 'Twilio');
+      const raw = await providerJson<unknown>(response.data, 'Twilio');
       if (!raw.ok) return raw;
+      const validated = twilioResponse.safeParse(raw.data);
+      if (!validated.success) return fail('upstream_error', 'Twilio returned an invalid response');
+      const data = validated.data;
       return ok({
-        number: raw.data.phone_number ?? number,
-        nationalFormat: raw.data.national_format ?? null,
-        countryCode: raw.data.country_code ?? null,
-        valid: raw.data.valid === true,
-        lineType: raw.data.line_type_intelligence?.type ?? null,
-        carrier: raw.data.line_type_intelligence?.carrier_name ?? null,
+        number: data.phone_number,
+        nationalFormat: data.national_format ?? null,
+        countryCode: data.country_code ?? null,
+        valid: data.valid,
+        lineType: data.line_type_intelligence?.type ?? null,
+        carrier: data.line_type_intelligence?.carrier_name ?? null,
       });
     },
   };

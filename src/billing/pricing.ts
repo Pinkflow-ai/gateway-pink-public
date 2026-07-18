@@ -6,7 +6,7 @@ export interface RuntimeFlatPricing {
 export interface PricingManifest {
   version: 1;
   creditUsdMicros: 1_000;
-  routes: Record<string, { kind: 'free'; credits: 0 } | RuntimeFlatPricing | RuntimeMeteredPricing>;
+  routes: Record<string, { kind: 'free'; credits: 0 } | RuntimeFlatPricing | RuntimeMeteredPricing | RuntimeBrowserTimePricing>;
 }
 
 export interface RuntimeMeteredPricing {
@@ -24,6 +24,18 @@ export interface RuntimeMeteredPricing {
   providerFeeBps: number;
 }
 
+export interface RuntimeBrowserTimePricing {
+  kind: 'metered';
+  unit: 'browser-time';
+  provider: 'cloudflare-browser-rendering';
+  browserUsdMicrosPerHour: 90_000;
+  baseCostMicros: 200;
+  maximumBrowserMs: number;
+  minimumCredits: 1;
+  reserveCredits: number;
+  targetMarginBps: 8_000;
+}
+
 function ceilDiv(numerator: number, denominator: number): number {
   return Math.floor((numerator + denominator - 1) / denominator);
 }
@@ -38,6 +50,31 @@ export function creditsForProviderCost(
   }
   const withFee = ceilDiv(providerCostMicros * (10_000 + pricing.providerFeeBps), 10_000);
   const credits = ceilDiv(withFee * 10_000, (10_000 - pricing.targetMarginBps) * 1_000);
+  return Math.max(pricing.minimumCredits, credits);
+}
+
+export function directCostForBrowserTime(
+  browserMs: number,
+  pricing: RuntimeBrowserTimePricing,
+): number {
+  if (!Number.isSafeInteger(browserMs) || browserMs < 0) {
+    throw new RangeError('browser milliseconds must be a non-negative integer');
+  }
+  if (browserMs > pricing.maximumBrowserMs) {
+    throw new RangeError(`browser milliseconds exceed maximum ${pricing.maximumBrowserMs}`);
+  }
+  return ceilDiv(browserMs, 40) + pricing.baseCostMicros;
+}
+
+export function creditsForBrowserTime(
+  browserMs: number,
+  pricing: RuntimeBrowserTimePricing,
+): number {
+  const directCostMicros = directCostForBrowserTime(browserMs, pricing);
+  const credits = ceilDiv(
+    directCostMicros * 10_000,
+    (10_000 - pricing.targetMarginBps) * 1_000,
+  );
   return Math.max(pricing.minimumCredits, credits);
 }
 

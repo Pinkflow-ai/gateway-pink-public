@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { fail, ok, type Provider } from '../_registry.js';
 import { providerFetch, providerJson, type Fetcher } from '../http.js';
 
@@ -13,18 +14,18 @@ interface EmailOutput {
   roleAddress: boolean;
   catchAll: boolean;
 }
-interface AbstractFlag { value?: boolean }
-interface AbstractResponse {
-  email?: string;
-  deliverability?: string;
-  quality_score?: string;
-  is_valid_format?: AbstractFlag;
-  is_mx_found?: AbstractFlag;
-  is_smtp_valid?: AbstractFlag;
-  is_disposable_email?: AbstractFlag;
-  is_role_email?: AbstractFlag;
-  is_catchall_email?: AbstractFlag;
-}
+const flag = z.object({ value: z.boolean() }).passthrough();
+const abstractResponse = z.object({
+  email: z.string().email(),
+  deliverability: z.string().min(1),
+  quality_score: z.union([z.string(), z.number()]),
+  is_valid_format: flag,
+  is_mx_found: flag,
+  is_smtp_valid: flag,
+  is_disposable_email: flag,
+  is_role_email: flag,
+  is_catchall_email: flag,
+}).passthrough();
 
 export function createEmailValidationProvider(apiKey: string, fetcher: Fetcher = fetch): Provider<EmailInput, EmailOutput> {
   return {
@@ -41,19 +42,22 @@ export function createEmailValidationProvider(apiKey: string, fetcher: Fetcher =
         headers: { 'user-agent': ctx.userAgent },
       }, 'Abstract');
       if (!response.ok) return response;
-      const raw = await providerJson<AbstractResponse>(response.data, 'Abstract');
+      const raw = await providerJson<unknown>(response.data, 'Abstract');
       if (!raw.ok) return raw;
-      const qualityScore = Number(raw.data.quality_score);
+      const validated = abstractResponse.safeParse(raw.data);
+      if (!validated.success) return fail('upstream_error', 'Abstract returned an invalid response');
+      const data = validated.data;
+      const qualityScore = Number(data.quality_score);
       return ok({
-        email: raw.data.email ?? email,
-        deliverability: (raw.data.deliverability ?? 'unknown').toLowerCase(),
+        email: data.email,
+        deliverability: data.deliverability.toLowerCase(),
         qualityScore: Number.isFinite(qualityScore) ? qualityScore : null,
-        validFormat: raw.data.is_valid_format?.value === true,
-        mxFound: raw.data.is_mx_found?.value === true,
-        smtpValid: raw.data.is_smtp_valid?.value === true,
-        disposable: raw.data.is_disposable_email?.value === true,
-        roleAddress: raw.data.is_role_email?.value === true,
-        catchAll: raw.data.is_catchall_email?.value === true,
+        validFormat: data.is_valid_format.value,
+        mxFound: data.is_mx_found.value,
+        smtpValid: data.is_smtp_valid.value,
+        disposable: data.is_disposable_email.value,
+        roleAddress: data.is_role_email.value,
+        catchAll: data.is_catchall_email.value,
       });
     },
   };

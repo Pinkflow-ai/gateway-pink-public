@@ -38,4 +38,21 @@ describe('browser CORS contract', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['access-control-allow-origin']).toBeUndefined();
   });
+
+  it('exposes billing and rate-limit response headers to browser clients', async () => {
+    const app = Fastify();
+    await registerCors(app, ['https://gateway.pink']);
+    app.get('/v1/test', async () => ({ ok: true }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/test',
+      headers: { origin: 'https://gateway.pink' },
+    });
+    const exposed = response.headers['access-control-expose-headers'] ?? '';
+    expect(exposed).toContain('X-Credits-Charged');
+    expect(exposed).toContain('X-RateLimit-Limit');
+    expect(exposed).toContain('X-RateLimit-Remaining');
+    expect(exposed).toContain('Retry-After');
+  });
 });

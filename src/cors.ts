@@ -8,6 +8,9 @@ const EXPOSED_HEADERS = [
   'X-Gateway-Price-Overrun',
   'X-Gateway-Storage-Policy',
   'X-Request-Id',
+  'X-RateLimit-Limit',
+  'X-RateLimit-Remaining',
+  'Retry-After',
 ];
 
 /** Restrictive browser access for the public docs/try-it console. */
@@ -18,7 +21,7 @@ export async function registerCors(app: FastifyInstance, allowedOrigins: readonl
       callback(null, !origin || origins.has(origin));
     },
     methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['authorization', 'content-type'],
+    allowedHeaders: ['authorization', 'content-type', 'idempotency-key'],
     exposedHeaders: EXPOSED_HEADERS,
     maxAge: 86_400,
     strictPreflight: true,

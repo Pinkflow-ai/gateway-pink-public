@@ -1,4 +1,5 @@
 import { ok, fail, type Provider } from '../_registry.js';
+import { providerFetch, type Fetcher } from '../http.js';
 
 interface WhoisInput {
   domain: string;
@@ -35,35 +36,36 @@ function findVcard(events: unknown): { created?: string } {
  * Payload (the domain) is not stored. Per-route storagePolicy 'metadata-only'
  * because registry responses vary and aren't worth caching.
  */
-export const rdapProvider: Provider<WhoisInput, WhoisOutput> = {
-  id: 'whois.rdap',
-  storagePolicy: 'metadata-only',
-  source: {
-    name: 'RDAP (RFC 7483)',
-    url: 'https://www.rfc-editor.org/info/rfc7483',
-    license: 'Public standard',
-    notes: 'Uses the rdap.org bootstrap; availability varies by TLD.',
-  },
-  async execute({ domain }, ctx) {
-    const clean = domain.toLowerCase().trim().replace(/\.$/, '');
-    if (!clean || !clean.includes('.')) {
-      return fail('bad_input', 'not a valid domain');
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
-    try {
-      const res = await fetch(`${RDAP_BOOTSTRAP}/${clean}`, {
+export function createRdapProvider(fetcher: Fetcher = fetch): Provider<WhoisInput, WhoisOutput> {
+  return {
+    id: 'whois.rdap',
+    storagePolicy: 'metadata-only',
+    source: {
+      name: 'RDAP (RFC 7483)',
+      url: 'https://www.rfc-editor.org/info/rfc7483',
+      license: 'Public standard',
+      notes: 'Uses the rdap.org bootstrap; availability varies by TLD.',
+    },
+    async execute({ domain }, ctx) {
+      const clean = domain.toLowerCase().trim().replace(/\.$/, '');
+      const valid = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(clean);
+      if (!valid) return fail('bad_input', 'not a valid domain');
+      const fetched = await providerFetch(fetcher, `${RDAP_BOOTSTRAP}/${clean}`, {
         headers: { Accept: 'application/rdap+json', 'User-Agent': ctx.userAgent },
         redirect: 'follow',
-        signal: controller.signal,
-      });
+        signal: AbortSignal.timeout(ctx.timeoutMs),
+      }, 'RDAP');
+      if (!fetched.ok) return fetched;
+      const res = fetched.data;
       if (res.status === 404) {
         return ok({ domain: clean, status: 'available' });
       }
       if (!res.ok) {
         return ok({ domain: clean, status: 'unknown' });
       }
-      const body = (await res.json()) as Record<string, unknown>;
+      let body: Record<string, unknown>;
+      try { body = await res.json() as Record<string, unknown>; }
+      catch { return fail('upstream_error', 'rdap returned invalid JSON'); }
       const events = findVcard(body.events);
       const entities = (body.entities ?? []) as Record<string, unknown>[];
       const registrarEntity = entities.find((e) => {
@@ -80,10 +82,8 @@ export const rdapProvider: Provider<WhoisInput, WhoisOutput> = {
         createdAt: events.created,
         nameservers: nameservers.map((n) => String(n.ldhName)).filter(Boolean),
       });
-    } catch {
-      return fail('upstream_error', 'rdap lookup failed');
-    } finally {
-      clearTimeout(timer);
-    }
-  },
-};
+    },
+  };
+}
+
+export const rdapProvider = createRdapProvider();

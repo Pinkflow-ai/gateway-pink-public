@@ -52,7 +52,48 @@
       "targetMarginBps": 8000,
       "providerFeeBps": 550
     },
+    "POST /v1/browser/markdown": {
+      "kind": "metered",
+      "unit": "browser-time",
+      "provider": "cloudflare-browser-rendering",
+      "browserUsdMicrosPerHour": 90000,
+      "baseCostMicros": 200,
+      "maximumBrowserMs": 16000,
+      "minimumCredits": 1,
+      "reserveCredits": 3,
+      "targetMarginBps": 8000
+    },
+    "POST /v1/browser/pdf": {
+      "kind": "metered",
+      "unit": "browser-time",
+      "provider": "cloudflare-browser-rendering",
+      "browserUsdMicrosPerHour": 90000,
+      "baseCostMicros": 200,
+      "maximumBrowserMs": 40000,
+      "minimumCredits": 1,
+      "reserveCredits": 6,
+      "targetMarginBps": 8000
+    },
+    "POST /v1/browser/screenshot": {
+      "kind": "metered",
+      "unit": "browser-time",
+      "provider": "cloudflare-browser-rendering",
+      "browserUsdMicrosPerHour": 90000,
+      "baseCostMicros": 200,
+      "maximumBrowserMs": 40000,
+      "minimumCredits": 1,
+      "reserveCredits": 6,
+      "targetMarginBps": 8000
+    },
     "POST /v1/compute/base64": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/color": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/csv": {
       "kind": "free",
       "credits": 0
     },
@@ -72,11 +113,23 @@
       "kind": "free",
       "credits": 0
     },
+    "POST /v1/compute/json-schema": {
+      "kind": "free",
+      "credits": 0
+    },
     "POST /v1/compute/jwt/decode": {
       "kind": "free",
       "credits": 0
     },
+    "POST /v1/compute/qr": {
+      "kind": "free",
+      "credits": 0
+    },
     "POST /v1/compute/slug": {
+      "kind": "free",
+      "credits": 0
+    },
+    "POST /v1/compute/text-stats": {
       "kind": "free",
       "credits": 0
     },
@@ -94,7 +147,11 @@
     },
     "POST /v1/screenshot": {
       "kind": "flat",
-      "credits": 20
+      "credits": 45
+    },
+    "POST /v1/security/password-exposure": {
+      "kind": "free",
+      "credits": 0
     }
   }
 }

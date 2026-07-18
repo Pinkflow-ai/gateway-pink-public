@@ -52,3 +52,15 @@ export const summarizeSchema = z.object({
   max_output_tokens: z.number().int().min(32).max(1_024).optional().default(1_024),
   max_credits: z.number().int().min(1).max(100).optional().default(100),
 });
+
+export const browserScreenshotSchema = z.object({
+  url: z.string().max(2_048).refine(safePublicUrl, 'url must be a public HTTP(S) URL'),
+  format: z.enum(['png', 'jpeg']).optional().default('png'),
+  full_page: z.boolean().optional().default(false),
+  viewport_width: z.number().int().min(320).max(1_920).optional().default(1_280),
+  viewport_height: z.number().int().min(200).max(1_080).optional().default(720),
+});
+
+export const browserUrlSchema = z.object({
+  url: z.string().max(2_048).refine(safePublicUrl, 'url must be a public HTTP(S) URL'),
+});

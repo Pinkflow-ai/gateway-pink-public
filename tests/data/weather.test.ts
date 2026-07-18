@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { noaaProvider } from '../../src/providers/weather/noaa.js';
+import { vi } from 'vitest';
+import { createNoaaProvider, noaaProvider } from '../../src/providers/weather/noaa.js';
 
 const ctx = { requestId: 't', timeoutMs: 8000, userAgent: 'gateway-pink-test' };
 
@@ -11,6 +12,27 @@ describe('noaa weather', () => {
   it('rejects out-of-range coordinates', async () => {
     const r = await noaaProvider.execute({ lat: 999, lon: 0 }, ctx);
     expect(r.ok).toBe(false);
+  });
+
+  it('normalizes timeouts and caches a successful forecast', async () => {
+    const timeout = createNoaaProvider(vi.fn(async () => {
+      throw new DOMException('timed out', 'TimeoutError');
+    }));
+    expect(await timeout.execute({ lat: 40.71, lon: -74.01 }, ctx))
+      .toMatchObject({ ok: false, error: { code: 'upstream_timeout' } });
+
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ properties: {
+        forecast: 'https://api.weather.gov/gridpoints/OKX/1,1/forecast', cwa: 'OKX',
+      } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ properties: { periods: [{
+        temperature: 68, windSpeed: '10 mph', shortForecast: 'Clear',
+      }] } })));
+    const provider = createNoaaProvider(fetcher);
+    await provider.execute({ lat: 40.71, lon: -74.01 }, ctx);
+    const second = await provider.execute({ lat: 40.71, lon: -74.01 }, ctx);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(second).toMatchObject({ ok: true, data: { temp: 20, ttl: 300 } });
   });
 
   live('returns a forecast for a US point', async () => {

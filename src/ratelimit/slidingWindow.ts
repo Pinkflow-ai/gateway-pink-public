@@ -1,45 +1,79 @@
+import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../config.js';
 import { makeError } from '../lib/errors.js';
 
-/**
- * In-memory sliding-window limiter (architecture.md §7 stands in for Redis).
- *
- * The limit is per source IP. Even free APIs are rate-limited — this is the
- * documented default of RATE_LIMIT_PER_MINUTE (60/min). State is lost on
- * restart, which is fine for the dev gateway. The Redis-backed version lives
- * in the private repo for production.
- */
+interface WindowResult { allowed: boolean; remaining: number; retryAfterSeconds: number }
+
+export class SlidingWindowLimiter {
+  private readonly hits = new Map<string, number[]>();
+
+  constructor(
+    private readonly windowMs = 60_000,
+    private readonly maximumKeys = 10_000,
+  ) {}
+
+  check(key: string, limit: number, now = Date.now()): WindowResult {
+    let recent = (this.hits.get(key) ?? []).filter((timestamp) => now - timestamp < this.windowMs);
+    if (recent.length >= limit) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((recent[0] + this.windowMs - now) / 1_000));
+      this.hits.delete(key);
+      this.hits.set(key, recent);
+      return { allowed: false, remaining: 0, retryAfterSeconds };
+    }
+    recent.push(now);
+    this.hits.delete(key);
+    this.hits.set(key, recent);
+    while (this.hits.size > this.maximumKeys) {
+      const oldest = this.hits.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.hits.delete(oldest);
+    }
+    return { allowed: true, remaining: limit - recent.length, retryAfterSeconds: 0 };
+  }
+
+  get keyCount(): number { return this.hits.size; }
+}
+
+function routeLimit(route: string): number {
+  if (route.startsWith('POST /v1/browser/') || route === 'POST /v1/ai/summarize') return 10;
+  if (route === 'POST /v1/compute/qr'
+    || route === 'POST /v1/compute/json-schema'
+    || route === 'POST /v1/compute/csv'
+    || route === 'POST /v1/security/password-exposure') return 30;
+  return 60;
+}
+
+function keyFingerprint(req: FastifyRequest): string {
+  const authorization = req.headers.authorization;
+  if (authorization?.startsWith('Bearer ')) {
+    return createHash('sha256').update(authorization.slice(7)).digest('hex');
+  }
+  return `ip:${req.ip || 'unknown'}`;
+}
+
+function reject(reply: FastifyReply, req: FastifyRequest, retryAfterSeconds: number): void {
+  reply.header('Retry-After', String(retryAfterSeconds)).code(429)
+    .send(makeError('rate_limited', 'too many requests, slow down', req.id));
+}
+
 export async function rateLimit(app: FastifyInstance): Promise<void> {
-  const windowMs = 60_000;
-  const limit = config.rateLimitPerMinute;
-  const hits = new Map<string, number[]>(); // ip → timestamps
+  const network = new SlidingWindowLimiter();
+  const routes = new SlidingWindowLimiter();
 
-  const prune = (now: number, ip: string): number[] => {
-    const recent = (hits.get(ip) ?? []).filter((t) => now - t < windowMs);
-    hits.set(ip, recent);
-    return recent;
-  };
+  app.addHook('onRequest', async (req, reply) => {
+    if ((req.routeOptions?.config as { publicRoute?: boolean } | undefined)?.publicRoute) return;
+    const result = network.check(`network:${req.ip || 'unknown'}`, config.rateLimitPerMinute);
+    if (!result.allowed) reject(reply, req, result.retryAfterSeconds);
+  });
 
-  app.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
-    if ((req.routeOptions?.config as { publicRoute?: boolean } | undefined)?.publicRoute) {
-      return;
-    }
-    const ip = (req.ip ?? 'unknown').toString();
-    const now = Date.now();
-    const recent = prune(now, ip);
-
-    const remaining = limit - recent.length;
+  app.addHook('preHandler', async (req, reply) => {
+    if ((req.routeOptions?.config as { publicRoute?: boolean } | undefined)?.publicRoute) return;
+    const route = `${req.method} ${req.routeOptions.url}`;
+    const limit = routeLimit(route);
+    const result = routes.check(`${route}:${keyFingerprint(req)}`, limit);
     reply.header('X-RateLimit-Limit', String(limit));
-    reply.header('X-RateLimit-Remaining', String(Math.max(remaining - 1, 0)));
-
-    if (remaining <= 0) {
-      reply
-        .header('Retry-After', String(Math.ceil(windowMs / 1000)))
-        .code(429)
-        .send(makeError('rate_limited', 'too many requests, slow down', req.id));
-    } else {
-      recent.push(now);
-    }
+    reply.header('X-RateLimit-Remaining', String(result.remaining));
+    if (!result.allowed) reject(reply, req, result.retryAfterSeconds);
   });
 }

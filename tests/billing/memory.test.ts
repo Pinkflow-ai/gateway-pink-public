@@ -5,60 +5,86 @@ import { creditsForProviderCost, estimateMeteredCredits } from '../../src/billin
 describe('in-memory usage meter', () => {
   it('holds credits atomically and refunds the unused reservation on settlement', async () => {
     const meter = new MemoryUsageMeter(20);
-    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/ai/summarize', 10);
+    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/ai/summarize', 10, 'fingerprint-1');
     expect(reserved).toMatchObject({ ok: true, availableCredits: 10 });
     if (!reserved.ok) throw new Error(reserved.reason);
 
-    expect(await meter.reserve('org-dev', 'request-2', 'POST /v1/ai/summarize', 11)).toEqual({
+    expect(await meter.reserve('org-dev', 'request-2', 'POST /v1/ai/summarize', 11, 'fingerprint-2')).toEqual({
       ok: false,
       reason: 'insufficient_credits',
       availableCredits: 10,
     });
 
-    const settled = await meter.settle(reserved.reservation, {
+    const usage = {
       actualCredits: 4,
       inputTokens: 10,
       outputTokens: 5,
       upstreamCostMicros: 2_000,
-    });
+    };
+    await meter.prepare(reserved.reservation, usage);
+    const settled = await meter.settle(reserved.reservation, usage);
     expect(settled).toEqual({ creditsCharged: 4, balanceAfter: 16, providerPriceOverrun: false });
   });
 
   it('charges zero when a reservation is released after failure', async () => {
     const meter = new MemoryUsageMeter(20);
-    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17);
+    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17, 'fingerprint-1');
     if (!reserved.ok) throw new Error(reserved.reason);
     expect(await meter.release(reserved.reservation)).toEqual({ balanceAfter: 20 });
   });
 
   it('rejects replay of a non-active internal request before an upstream can run again', async () => {
     const meter = new MemoryUsageMeter(20);
-    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17);
+    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17, 'fingerprint-1');
     if (!reserved.ok) throw new Error(reserved.reason);
+    await meter.prepare(reserved.reservation, { actualCredits: 17 });
     await meter.settle(reserved.reservation, { actualCredits: 17 });
 
-    expect(await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17)).toEqual({
+    expect(await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17, 'fingerprint-1')).toEqual({
       ok: false,
-      reason: 'billing_conflict',
+      reason: 'request_already_settled',
       availableCredits: 3,
     });
   });
 
+  it('distinguishes active, pending, released, and fingerprint mismatch reuse', async () => {
+    const meter = new MemoryUsageMeter(50);
+    const active = await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17, 'fingerprint-1');
+    if (!active.ok) throw new Error(active.reason);
+    expect(await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17, 'fingerprint-1'))
+      .toMatchObject({ ok: false, reason: 'request_in_progress' });
+    expect(await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17, 'different'))
+      .toMatchObject({ ok: false, reason: 'idempotency_mismatch' });
+    await meter.prepare(active.reservation, { actualCredits: 17 });
+    expect(await meter.reserve('org-dev', 'request-1', 'POST /v1/email/validate', 17, 'fingerprint-1'))
+      .toMatchObject({ ok: false, reason: 'billing_unknown' });
+
+    const released = await meter.reserve('org-dev', 'request-2', 'POST /v1/email/validate', 17, 'fingerprint-2');
+    if (!released.ok) throw new Error(released.reason);
+    await meter.release(released.reservation);
+    expect(await meter.reserve('org-dev', 'request-2', 'POST /v1/email/validate', 17, 'fingerprint-2'))
+      .toMatchObject({ ok: false, reason: 'request_already_failed' });
+  });
+
   it('caps an unexpected price overrun and disables that route', async () => {
     const meter = new MemoryUsageMeter(100);
-    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/ai/summarize', 10);
+    const reserved = await meter.reserve('org-dev', 'request-1', 'POST /v1/ai/summarize', 10, 'fingerprint-1');
     if (!reserved.ok) throw new Error(reserved.reason);
-    expect(await meter.settle(reserved.reservation, {
+    const usage = {
       actualCredits: 12,
       inputTokens: 1,
       outputTokens: 1,
       upstreamCostMicros: 12_000,
-    })).toEqual({ creditsCharged: 10, balanceAfter: 90, providerPriceOverrun: true });
-    expect(await meter.reserve('org-dev', 'request-2', 'POST /v1/ai/summarize', 1)).toEqual({
+    };
+    await meter.prepare(reserved.reservation, usage);
+    expect(await meter.settle(reserved.reservation, usage)).toEqual({ creditsCharged: 10, balanceAfter: 90, providerPriceOverrun: true });
+    expect(await meter.reserve('org-dev', 'request-2', 'POST /v1/ai/summarize', 1, 'fingerprint-2')).toEqual({
       ok: false,
       reason: 'route_disabled',
       availableCredits: 90,
     });
+    expect(await meter.reserve('org-dev', 'request-1', 'POST /v1/ai/summarize', 10, 'fingerprint-1'))
+      .toMatchObject({ ok: false, reason: 'request_already_settled' });
   });
 });
 

@@ -26,6 +26,7 @@ export type UpstreamErrorCode =
   | 'provider_unavailable'
   | 'upstream_error'
   | 'upstream_timeout'
+  | 'provider_price_overrun'
   | 'rate_limited';
 
 /** A provider's own result type — never throws for expected upstream errors. */
@@ -67,6 +68,17 @@ export interface MeteredProvider<Req, Res> {
   execute(req: Req, ctx: ProviderContext): Promise<MeteredProviderResult<Res>>;
 }
 
+export type BrowserMeteredProviderResult<T> =
+  | { ok: true; data: T; metering: { browserMs: number } }
+  | { ok: false; error: { code: UpstreamErrorCode; message: string } };
+
+export interface BrowserMeteredProvider<Req, Res> {
+  readonly id: ProviderId;
+  readonly source: ProviderSource;
+  readonly storagePolicy: StoragePolicy;
+  execute(req: Req, ctx: ProviderContext): Promise<BrowserMeteredProviderResult<Res>>;
+}
+
 /** Helpers for the result discriminated union. */
 export const ok = <T>(data: T): ProviderResult<T> => ({ ok: true, data });
 export const fail = <T>(
@@ -78,3 +90,8 @@ export const meteredFail = <T>(
   code: UpstreamErrorCode,
   message: string,
 ): MeteredProviderResult<T> => ({ ok: false, error: { code, message } });
+
+export const browserMeteredFail = <T>(
+  code: UpstreamErrorCode,
+  message: string,
+): BrowserMeteredProviderResult<T> => ({ ok: false, error: { code, message } });

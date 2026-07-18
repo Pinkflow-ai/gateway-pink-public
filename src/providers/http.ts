@@ -32,3 +32,41 @@ export async function providerJson<T>(
     return fail('upstream_error', `${providerName} returned invalid JSON`);
   }
 }
+
+/**
+ * Read an upstream body without ever buffering more than the published cap.
+ * This matters for caller-influenced rendering targets where Content-Length
+ * can be absent or dishonest.
+ */
+export async function readResponseBody(
+  response: Response,
+  maximumBytes: number,
+  tooLargeMessage: string,
+): Promise<ProviderResult<Buffer>> {
+  const contentLength = response.headers.get('content-length');
+  if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > maximumBytes) {
+    try { await response.body?.cancel(); } catch { /* best effort */ }
+    return fail('upstream_error', tooLargeMessage);
+  }
+  if (!response.body) return { ok: true, data: Buffer.alloc(0) };
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maximumBytes) {
+        await reader.cancel();
+        return fail('upstream_error', tooLargeMessage);
+      }
+      chunks.push(value);
+    }
+  } catch {
+    try { await reader.cancel(); } catch { /* best effort */ }
+    return fail('upstream_error', 'upstream response body could not be read');
+  }
+  return { ok: true, data: Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), total) };
+}

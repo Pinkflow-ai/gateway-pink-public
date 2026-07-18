@@ -16,6 +16,11 @@ import {
   slugSchema,
   unitsSchema,
   timeQuerySchema,
+  qrSchema,
+  jsonSchemaValidationSchema,
+  csvSchema,
+  colorSchema,
+  textStatsSchema,
 } from '../../schemas/compute.js';
 import { base64Provider } from '../../providers/compute/base64.js';
 import { hashProvider } from '../../providers/compute/hash.js';
@@ -31,6 +36,11 @@ import { dummyProvider } from '../../providers/compute/dummy.js';
 import { slugProvider } from '../../providers/compute/slug.js';
 import { unitsProvider } from '../../providers/compute/units.js';
 import { timeProvider } from '../../providers/compute/time.js';
+import { qrProvider } from '../../providers/compute/qr.js';
+import { jsonSchemaProvider } from '../../providers/compute/json-schema.js';
+import { csvProvider } from '../../providers/compute/csv.js';
+import { colorProvider } from '../../providers/compute/color.js';
+import { textStatsProvider } from '../../providers/compute/text-stats.js';
 
 /** Compute-only routes. Every one sets X-Gateway-No-Store: true. */
 export async function computeRoutes(app: FastifyInstance): Promise<void> {
@@ -89,5 +99,25 @@ export async function computeRoutes(app: FastifyInstance): Promise<void> {
   app.get('/v1/compute/time', async (req, reply) => {
     const q = parse(timeQuerySchema, req.query, req, reply);
     if (q) await runProvider(req, reply, 'GET /v1/compute/time', timeProvider, q);
+  });
+  app.post('/v1/compute/qr', async (req, reply) => {
+    const body = parse(qrSchema, req.body, req, reply);
+    if (body) await runProvider(req, reply, 'POST /v1/compute/qr', qrProvider, body);
+  });
+  app.post('/v1/compute/json-schema', async (req, reply) => {
+    const body = parse(jsonSchemaValidationSchema, req.body, req, reply);
+    if (body) await runProvider(req, reply, 'POST /v1/compute/json-schema', jsonSchemaProvider, body);
+  });
+  app.post('/v1/compute/csv', async (req, reply) => {
+    const body = parse(csvSchema, req.body, req, reply);
+    if (body) await runProvider(req, reply, 'POST /v1/compute/csv', csvProvider, body);
+  });
+  app.post('/v1/compute/color', async (req, reply) => {
+    const body = parse(colorSchema, req.body, req, reply);
+    if (body) await runProvider(req, reply, 'POST /v1/compute/color', colorProvider, body);
+  });
+  app.post('/v1/compute/text-stats', async (req, reply) => {
+    const body = parse(textStatsSchema, req.body, req, reply);
+    if (body) await runProvider(req, reply, 'POST /v1/compute/text-stats', textStatsProvider, body);
   });
 }

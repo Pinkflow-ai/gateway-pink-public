@@ -1,90 +1,79 @@
-import { ok, fail, type Provider } from '../_registry.js';
+import { ok, fail, type Provider, type ProviderResult } from '../_registry.js';
+import { providerFetch, type Fetcher } from '../http.js';
+import { TtlCache } from '../../lib/ttlCache.js';
 
-interface WeatherInput {
-  lat: number;
-  lon: number;
-}
+interface WeatherInput { lat: number; lon: number }
 interface WeatherOutput {
-  temp: number;
-  unit: 'C' | 'F';
-  windKph: number;
-  conditions: string;
-  office: string;
-  fetchedAt: string;
+  temp: number; unit: 'C' | 'F'; windKph: number; conditions: string;
+  office: string; fetchedAt: string; ttl: number;
 }
 
 const BASE = 'https://api.weather.gov';
 
-async function getJson(url: string, userAgent: string, timeoutMs: number): Promise<unknown> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { headers: { 'User-Agent': userAgent, Accept: 'application/geo+json' }, signal: controller.signal });
-    if (!res.ok) {
-      return { __status: res.status, __statusText: res.statusText };
-    }
-    return (await res.json()) as unknown;
-  } finally {
-    clearTimeout(timer);
-  }
+async function getJson(
+  fetcher: Fetcher,
+  url: string,
+  userAgent: string,
+  timeoutMs: number,
+): Promise<ProviderResult<unknown>> {
+  const fetched = await providerFetch(fetcher, url, {
+    headers: { 'User-Agent': userAgent, Accept: 'application/geo+json' },
+    signal: AbortSignal.timeout(timeoutMs),
+  }, 'NOAA');
+  if (!fetched.ok) return fetched;
+  if (!fetched.data.ok) return fail('upstream_error', `NOAA returned HTTP ${fetched.data.status}`);
+  try { return ok(await fetched.data.json()); }
+  catch { return fail('upstream_error', 'NOAA returned invalid JSON'); }
 }
 
 function pick(obj: unknown, path: string[]): unknown {
-  let cur: unknown = obj;
-  for (const k of path) {
-    if (cur && typeof cur === 'object' && k in (cur as Record<string, unknown>)) {
-      cur = (cur as Record<string, unknown>)[k];
-    } else {
-      return undefined;
-    }
+  let current: unknown = obj;
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || !(key in current)) return undefined;
+    current = (current as Record<string, unknown>)[key];
   }
-  return cur;
+  return current;
 }
 
-/**
- * US weather via NOAA / NWS (api.weather.gov). Public-domain US-government data.
- *
- * Two-step: points/{lat},{lon} → forecast office grid → forecast. NOAA asks
- * for a identifying User-Agent and limits usage to roughly 60 req/min — our
- * development limiter enforces a source-IP cap, so callers don't get blocked.
- *
- * Payload (lat/lon) is not stored. The forecast response is cached briefly
- * upstream of this provider — see storagePolicy 'cached-ttl'.
- */
-export const noaaProvider: Provider<WeatherInput, WeatherOutput> = {
-  id: 'weather.us',
-  storagePolicy: 'cached-ttl',
-  source: {
-    name: 'NOAA / NWS',
-    url: 'https://www.weather.gov/',
-    license: 'Public domain (US government work)',
-    notes: 'api.weather.gov, ~60 req/min implicit upstream limit.',
-  },
-  async execute({ lat, lon }, ctx) {
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      return fail('bad_input', 'lat/lon out of range');
-    }
-    // NWS only covers US states and territories. Foreign coords 404.
-    const pointsUrl = `${BASE}/points/${lat.toFixed(4)},${lon.toFixed(4)}`;
-    const points = await getJson(pointsUrl, ctx.userAgent, ctx.timeoutMs);
-    const forecastUrl = pick(points, ['properties', 'forecast']) as string | undefined;
-    if (!forecastUrl) {
-      return fail('upstream_error', 'no forecast grid for this location (US coverage only)');
-    }
-    const forecast = await getJson(forecastUrl, ctx.userAgent, ctx.timeoutMs);
-    const periods = pick(forecast, ['properties', 'periods']) as unknown[];
-    const first = periods?.[0] as Record<string, unknown> | undefined;
-    if (!first) return fail('upstream_error', 'no forecast periods returned');
+export function createNoaaProvider(
+  fetcher: Fetcher = fetch,
+  cache = new TtlCache<WeatherOutput>(1_000),
+): Provider<WeatherInput, WeatherOutput> {
+  return {
+    id: 'weather.us',
+    storagePolicy: 'cached-ttl',
+    source: { name: 'NOAA / NWS', url: 'https://www.weather.gov/', license: 'Public domain (US government work)', notes: 'US locations only.' },
+    async execute({ lat, lon }, ctx) {
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return fail('bad_input', 'lat/lon out of range');
+      const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+      const cached = cache.get(key);
+      if (cached) return ok(cached);
+      const points = await getJson(fetcher, `${BASE}/points/${key}`, ctx.userAgent, ctx.timeoutMs);
+      if (!points.ok) return points;
+      const forecastUrl = pick(points.data, ['properties', 'forecast']);
+      if (typeof forecastUrl !== 'string' || !forecastUrl.startsWith('https://api.weather.gov/')) {
+        return fail('upstream_error', 'no forecast grid for this location (US coverage only)');
+      }
+      const forecast = await getJson(fetcher, forecastUrl, ctx.userAgent, ctx.timeoutMs);
+      if (!forecast.ok) return forecast;
+      const periods = pick(forecast.data, ['properties', 'periods']);
+      const first = Array.isArray(periods) ? periods[0] as Record<string, unknown> | undefined : undefined;
+      if (!first) return fail('upstream_error', 'no forecast periods returned');
+      const tempF = Number(pick(first, ['temperature']) ?? Number.NaN);
+      const windMph = Number(String(pick(first, ['windSpeed']) ?? '').split(' ')[0]);
+      const data: WeatherOutput = {
+        temp: Number.isFinite(tempF) ? Math.round(((tempF - 32) * 5) / 9 * 10) / 10 : 0,
+        unit: 'C',
+        windKph: Number.isFinite(windMph) ? Math.round(windMph * 1.609) : 0,
+        conditions: String(pick(first, ['shortForecast']) ?? 'unknown'),
+        office: String(pick(points.data, ['properties', 'cwa']) ?? 'unknown'),
+        fetchedAt: new Date().toISOString(),
+        ttl: 300,
+      };
+      cache.set(key, data, 300_000);
+      return ok(data);
+    },
+  };
+}
 
-    const tempF = Number(pick(first, ['temperature']) ?? NaN);
-    const windMph = Number(pick(first, ['windSpeed'])?.toString().split(' ')[0] ?? NaN);
-    return ok({
-      temp: Number.isFinite(tempF) ? Math.round(((tempF - 32) * 5) / 9 * 10) / 10 : 0,
-      unit: 'C',
-      windKph: Number.isFinite(windMph) ? Math.round(windMph * 1.609) : 0,
-      conditions: String(pick(first, ['shortForecast']) ?? 'unknown'),
-      office: String(pick(points, ['properties', 'cwa']) ?? 'unknown'),
-      fetchedAt: new Date().toISOString(),
-    });
-  },
-};
+export const noaaProvider = createNoaaProvider();

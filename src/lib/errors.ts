@@ -16,6 +16,7 @@ export interface ApiErrorEnvelope {
 /** HTTP status for each error code (architecture.md §8.2). */
 export const ERROR_STATUS: Record<string, number> = {
   bad_request: 400,
+  bad_input: 400,
   unauthorized: 401,
   insufficient_credits: 402,
   billing_conflict: 409,
@@ -24,6 +25,7 @@ export const ERROR_STATUS: Record<string, number> = {
   provider_unavailable: 503,
   upstream_error: 502,
   upstream_timeout: 504,
+  provider_price_overrun: 502,
   internal_error: 500,
 };
 
