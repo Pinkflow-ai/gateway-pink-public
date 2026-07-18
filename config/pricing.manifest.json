@@ -22,6 +22,10 @@
       "kind": "free",
       "credits": 0
     },
+    "GET /v1/currency/convert": {
+      "kind": "free",
+      "credits": 0
+    },
     "GET /v1/dns/resolve": {
       "kind": "free",
       "credits": 0
@@ -29,6 +33,10 @@
     "GET /v1/phone/lookup": {
       "kind": "flat",
       "credits": 40
+    },
+    "GET /v1/phone/validate": {
+      "kind": "free",
+      "credits": 0
     },
     "GET /v1/weather": {
       "kind": "free",

@@ -33,6 +33,12 @@ OPERATIONS = {
     "paid": False,
     "creditCeiling": 0
   },
+  "currencyConvert": {
+    "method": "GET",
+    "path": "/v1/currency/convert",
+    "paid": False,
+    "creditCeiling": 0
+  },
   "dnsResolve": {
     "method": "GET",
     "path": "/v1/dns/resolve",
@@ -44,6 +50,12 @@ OPERATIONS = {
     "path": "/v1/phone/lookup",
     "paid": True,
     "creditCeiling": 40
+  },
+  "phoneValidate": {
+    "method": "GET",
+    "path": "/v1/phone/validate",
+    "paid": False,
+    "creditCeiling": 0
   },
   "weather": {
     "method": "GET",
@@ -250,11 +262,17 @@ class GatewayClient:
     def compute_uuid(self, input=None, *, idempotency_key=None, max_credits=None):
         return self.call("computeUuid", input, idempotency_key=idempotency_key, max_credits=max_credits)
 
+    def currency_convert(self, input=None, *, idempotency_key=None, max_credits=None):
+        return self.call("currencyConvert", input, idempotency_key=idempotency_key, max_credits=max_credits)
+
     def dns_resolve(self, input=None, *, idempotency_key=None, max_credits=None):
         return self.call("dnsResolve", input, idempotency_key=idempotency_key, max_credits=max_credits)
 
     def phone_lookup(self, input=None, *, idempotency_key=None, max_credits=None):
         return self.call("phoneLookup", input, idempotency_key=idempotency_key, max_credits=max_credits)
+
+    def phone_validate(self, input=None, *, idempotency_key=None, max_credits=None):
+        return self.call("phoneValidate", input, idempotency_key=idempotency_key, max_credits=max_credits)
 
     def weather(self, input=None, *, idempotency_key=None, max_credits=None):
         return self.call("weather", input, idempotency_key=idempotency_key, max_credits=max_credits)

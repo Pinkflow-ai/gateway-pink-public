@@ -29,6 +29,7 @@
     "csv-stringify": "6.6.0",
     "fastify": "^5.2.1",
     "fastify-raw-body": "^5.0.0",
+    "google-libphonenumber": "^3.2.44",
     "pg": "^8.22.0",
     "pino": "^9.5.0",
     "pino-pretty": "^11.3.0",
@@ -38,6 +39,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/google-libphonenumber": "^7.4.30",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.20.0",
     "@types/qrcode": "1.5.5",

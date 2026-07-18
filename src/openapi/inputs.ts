@@ -22,8 +22,10 @@ export const INPUT_SCHEMAS: Record<string, InputSchema> = {
   'GET /v1/compute/time': object({ at: string({ format: 'date-time' }), timezone: string({ maxLength: 100, default: 'UTC' }) }),
   'GET /v1/compute/ua': object({ ua: string({ minLength: 1, maxLength: 10_000 }) }, ['ua']),
   'GET /v1/compute/uuid': object({ version: string({ enum: ['v4', 'v7'], default: 'v4' }), count: integer({ minimum: 1, maximum: 1_000, default: 1 }) }),
+  'GET /v1/currency/convert': object({ amount: number({ minimum: 0, maximum: 1_000_000_000_000 }), from: string({ pattern: '^[A-Za-z]{3}$' }), to: string({ pattern: '^[A-Za-z]{3}$' }) }, ['amount', 'from', 'to']),
   'GET /v1/dns/resolve': object({ name: string({ minLength: 1, maxLength: 253 }), type: string({ enum: ['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME'], default: 'A' }) }, ['name']),
   'GET /v1/phone/lookup': object({ number: string({ pattern: '^\\+[1-9]\\d{6,14}$' }) }, ['number']),
+  'GET /v1/phone/validate': object({ number: string({ minLength: 2, maxLength: 250 }), country: string({ pattern: '^[A-Za-z]{2}$' }) }, ['number']),
   'GET /v1/weather': object({ lat: number({ minimum: -90, maximum: 90 }), lon: number({ minimum: -180, maximum: 180 }) }, ['lat', 'lon']),
   'GET /v1/whois/lookup': object({ domain: string({ minLength: 1, maxLength: 253 }) }, ['domain']),
 

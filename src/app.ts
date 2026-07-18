@@ -21,6 +21,10 @@ import { createPaidRouteDependencies } from './routes/paid/runtime.js';
 import { passwordExposureRoute } from './routes/security/passwordExposure.js';
 import { weatherRoutes } from './routes/weather/us.js';
 import { whoisRoutes } from './routes/whois/lookup.js';
+import { phoneValidationRoutes } from './routes/phone/validate.js';
+import { currencyRoutes } from './routes/currency/convert.js';
+import type { PhoneValidationInput, PhoneValidationOutput } from './providers/phone/validate.js';
+import type { EcbFxInput, EcbFxOutput } from './providers/currency/ecb.js';
 
 export interface AppOptions {
   paidDependencies?: PaidRouteDependencies;
@@ -32,6 +36,8 @@ export interface AppOptions {
   closeResources?: () => Promise<void>;
   freeUsageRecorder?: FreeUsageRecorder;
   paddleDependencies?: PaddleRouteDependencies;
+  phoneValidationProvider?: Provider<PhoneValidationInput, PhoneValidationOutput>;
+  fxProvider?: Provider<EcbFxInput, EcbFxOutput>;
 }
 
 export async function buildApp(options: AppOptions = {}): Promise<FastifyInstance> {
@@ -62,6 +68,8 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   await app.register(dnsRoutes);
   await app.register(weatherRoutes);
   await app.register(whoisRoutes);
+  await app.register(phoneValidationRoutes, { provider: options.phoneValidationProvider });
+  await app.register(currencyRoutes, { provider: options.fxProvider });
   await app.register(passwordExposureRoute, { provider: options.passwordExposureProvider });
   await app.register(paidRoutes, options.paidDependencies ?? createPaidRouteDependencies());
   if (options.paddleDependencies) {

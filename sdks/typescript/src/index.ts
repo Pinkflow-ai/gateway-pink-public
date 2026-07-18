@@ -30,6 +30,12 @@ export const OPERATIONS = {
     "paid": false,
     "creditCeiling": 0
   },
+  "currencyConvert": {
+    "method": "GET",
+    "path": "/v1/currency/convert",
+    "paid": false,
+    "creditCeiling": 0
+  },
   "dnsResolve": {
     "method": "GET",
     "path": "/v1/dns/resolve",
@@ -41,6 +47,12 @@ export const OPERATIONS = {
     "path": "/v1/phone/lookup",
     "paid": true,
     "creditCeiling": 40
+  },
+  "phoneValidate": {
+    "method": "GET",
+    "path": "/v1/phone/validate",
+    "paid": false,
+    "creditCeiling": 0
   },
   "weather": {
     "method": "GET",
@@ -266,12 +278,20 @@ export class GatewayClient {
     return this.call('computeUuid', input, options);
   }
 
+  currencyConvert(input: GatewayInput = {}, options: GatewayRequestOptions = {}): Promise<unknown> {
+    return this.call('currencyConvert', input, options);
+  }
+
   dnsResolve(input: GatewayInput = {}, options: GatewayRequestOptions = {}): Promise<unknown> {
     return this.call('dnsResolve', input, options);
   }
 
   phoneLookup(input: GatewayInput = {}, options: GatewayRequestOptions = {}): Promise<unknown> {
     return this.call('phoneLookup', input, options);
+  }
+
+  phoneValidate(input: GatewayInput = {}, options: GatewayRequestOptions = {}): Promise<unknown> {
+    return this.call('phoneValidate', input, options);
   }
 
   weather(input: GatewayInput = {}, options: GatewayRequestOptions = {}): Promise<unknown> {

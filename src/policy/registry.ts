@@ -45,11 +45,13 @@ export const ROUTE_POLICIES: RoutePolicy[] = [
   { route: 'POST /v1/compute/color', storagePolicy: 'none', storesPayload: false },
   { route: 'POST /v1/compute/text-stats', storagePolicy: 'none', storesPayload: false },
   { route: 'POST /v1/security/password-exposure', storagePolicy: 'none', storesPayload: false },
+  { route: 'GET /v1/phone/validate', storagePolicy: 'none', storesPayload: false },
 
   // data APIs — payload not stored, response cached briefly for quota economy
   { route: 'GET /v1/dns/resolve', storagePolicy: 'cached-ttl', storesPayload: false },
   { route: 'GET /v1/weather', storagePolicy: 'cached-ttl', storesPayload: false },
   { route: 'GET /v1/whois/lookup', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'GET /v1/currency/convert', storagePolicy: 'cached-ttl', storesPayload: false },
 
   // paid APIs — request payload is forwarded, never persisted by Gateway.pink
   { route: 'POST /v1/email/validate', storagePolicy: 'metadata-only', storesPayload: false },

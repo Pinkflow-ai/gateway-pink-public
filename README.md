@@ -12,7 +12,9 @@ check themselves instead of taking on trust.
 
 - `src/routes/` — the HTTP routes (Fastify).
 - `src/providers/` — one file per API. Compute providers are pure functions;
-  data providers (DNS, NOAA weather, RDAP) and paid adapters call real upstreams.
+  data providers (DNS, NOAA weather, RDAP, ECB reference FX) and paid adapters
+  call real upstreams; basic phone validation runs from bundled numbering-plan
+  metadata without forwarding the number.
 - `src/auth/` — development bearer auth plus the production HMAC-digest
   Postgres resolver. Plaintext keys are never stored or logged.
 - `src/billing/` — generated-manifest validation, metered pricing math,
@@ -49,6 +51,8 @@ curl -X POST http://localhost:3000/v1/compute/hash \
 curl -X POST http://localhost:3000/v1/compute/units \
   -H 'content-type: application/json' \
   -d '{"value":1,"from":"km","to":"m"}'
+curl 'http://localhost:3000/v1/phone/validate?number=%2B41446681800'
+curl 'http://localhost:3000/v1/currency/convert?amount=100&from=EUR&to=USD'
 ```
 
 Note the response headers on the compute routes:
@@ -205,8 +209,9 @@ fail closed. See `PUBLISHING.md` for the exact boundary.
 
 ## A note on rate limits
 
-The free data APIs (DNS, NOAA, RDAP) are still rate-limited by their upstreams
-or by us. The public dev gateway applies a `RATE_LIMIT_PER_MINUTE` network guard
+The free data APIs (DNS, NOAA, RDAP, and cached ECB reference FX) are still
+rate-limited by their upstreams or by us. Offline phone validation has no
+upstream call but uses the same abuse controls. The public dev gateway applies a `RATE_LIMIT_PER_MINUTE` network guard
 (default 120) and bounded 10/30/60 route classes keyed by an API-key fingerprint,
 or by source IP in intentional open mode. Production applies the same classes
 through an atomic Redis rolling window keyed by the authenticated database key
