@@ -21,6 +21,10 @@ check themselves instead of taking on trust.
 - `src/ratelimit/` — bounded local limits plus the atomic Redis rolling-window
   adapter used across production instances.
 - `src/policy/` — the per-route storage policy and `GET /v1/storage-policy`.
+- `openapi/gateway.openapi.json` — the generated OpenAPI 3.1 contract for every
+  customer route in the priced runtime manifest.
+- `sdks/typescript/` and `sdks/python/` — dependency-light generated clients
+  with paid-call idempotency and local credit ceilings.
 - `src/log.ts` — the pino logger with the redaction hook that strips bodies
   before serialization.
 - `tests/guard-no-payload.test.ts` — the proof. Fails if any route tagged
@@ -59,7 +63,21 @@ x-gateway-no-store: true
 ```bash
 npm test           # unit + guard test (no network)
 RUN_LIVE=1 npm test  # also exercises the real DNS / NOAA / RDAP upstreams
+npm run contract:check # regenerate OpenAPI/SDKs and prove checked-in parity
 ```
+
+## OpenAPI and SDKs
+
+The runtime pricing manifest is the source of truth for the OpenAPI document
+and both SDK operation maps. Run `npm run openapi:generate` after changing a
+route, input contract, storage policy, or price. CI should use
+`npm run contract:check` so generated files cannot drift from runtime.
+
+Both clients default to `https://api.gateway.pink`, which is a reserved
+production address rather than a claim that the hosted service is live. Set a
+different `baseUrl`/`base_url` for local or preview environments. Paid calls
+require an idempotency key. The optional `maxCredits`/`max_credits` limit rejects
+a call locally when the route's worst-case charge exceeds the caller's ceiling.
 
 ## Paid routes in local development
 

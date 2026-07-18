@@ -9,6 +9,10 @@
     "dev": "tsx watch src/server.ts",
     "start": "node --import tsx/esm src/server.ts",
     "build": "tsc",
+    "openapi:generate": "tsx src/openapi/write.ts",
+    "openapi:check": "npm run openapi:generate && git diff --exit-code -- openapi/gateway.openapi.json sdks/typescript/src/index.ts sdks/python/gateway_pink/client.py",
+    "sdk:check": "npx tsc -p sdks/typescript/tsconfig.json --noEmit && python3 -c \"import ast,pathlib; ast.parse(pathlib.Path('sdks/python/gateway_pink/client.py').read_text())\"",
+    "contract:check": "npm run openapi:check && npm run sdk:check",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
