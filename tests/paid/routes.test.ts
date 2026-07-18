@@ -8,6 +8,8 @@ import { paidRoutes, type PaidRouteDependencies } from '../../src/routes/paid/in
 const emailPrice = { kind: 'flat' as const, credits: 17 };
 const phonePrice = { kind: 'flat' as const, credits: 40 };
 const screenshotPrice = { kind: 'flat' as const, credits: 45 };
+const ocrTextPrice = { kind: 'flat' as const, credits: 8 };
+const ocrExpensePrice = { kind: 'flat' as const, credits: 50 };
 const metered: RuntimeMeteredPricing = {
   kind: 'metered', unit: 'provider-cost', provider: 'openrouter',
   model: 'google/gemini-2.5-flash-lite', promptUsdMicrosPerMillionTokens: 100_000,
@@ -25,6 +27,7 @@ const browserPrice = {
 const markdownPrice = { ...browserPrice, maximumBrowserMs: 16_000, reserveCredits: 3 };
 const source = { name: 'test', url: 'https://example.test', license: 'test' };
 const paidHeaders = (key: string) => ({ 'idempotency-key': key });
+const identity = { orgId: 'org-dev', apiKeyId: 'key-dev' };
 
 function provider(result: Awaited<ReturnType<Provider<unknown, unknown>['execute']>>): Provider<unknown, unknown> {
   return { id: 'test', source, storagePolicy: 'metadata-only', execute: vi.fn(async () => result) };
@@ -54,12 +57,15 @@ async function appFor(meter: MemoryUsageMeter, overrides: Partial<PaidRouteDepen
   const app = Fastify();
   const deps: PaidRouteDependencies = {
     meter,
-    orgIdForRequest: () => 'org-dev',
-    prices: { email: emailPrice, phone: phonePrice, screenshot: screenshotPrice, summarize: metered,
+    identityForRequest: () => identity,
+    prices: { email: emailPrice, phone: phonePrice, screenshot: screenshotPrice,
+      ocrText: ocrTextPrice, ocrExpense: ocrExpensePrice, summarize: metered,
       browserScreenshot: browserPrice, browserPdf: browserPrice, browserMarkdown: markdownPrice },
     emailProvider: provider({ ok: true, data: { valid: true } }),
     phoneProvider: provider({ ok: true, data: { valid: true } }),
     screenshotProvider: provider({ ok: true, data: { url: 'https://example.test/s.png' } }),
+    ocrTextProvider: provider({ ok: true, data: { text: 'TOTAL 12.00', lines: [] } }),
+    ocrExpenseProvider: provider({ ok: true, data: { documents: [] } }),
     summarizeProvider: meteredProvider(),
     browserScreenshotProvider: browserProvider(),
     browserPdfProvider: browserProvider(),
@@ -80,6 +86,23 @@ describe('paid routes', () => {
     expect(emailProvider.execute).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['org_billing_disabled', 403],
+    ['billing_debt', 402],
+  ] as const)('fails before the provider when org billing returns %s', async (reason, status) => {
+    const emailProvider = provider({ ok: true, data: { valid: true } });
+    const meter = new MemoryUsageMeter(100);
+    vi.spyOn(meter, 'reserve').mockResolvedValue({ ok: false, reason, availableCredits: 100 } as never);
+    const app = await appFor(meter, { emailProvider });
+    const response = await app.inject({
+      method: 'POST', url: '/v1/email/validate', headers: paidHeaders(`org-${reason}`),
+      payload: { email: 'person@example.com' },
+    });
+    expect(response.statusCode).toBe(status);
+    expect(response.json().error.code).toBe(reason);
+    expect(emailProvider.execute).not.toHaveBeenCalled();
+  });
+
   it('releases the reservation and charges zero on provider failure', async () => {
     const emailProvider = provider({ ok: false, error: { code: 'upstream_error', message: 'provider down' } });
     const meter = new MemoryUsageMeter(20);
@@ -88,7 +111,7 @@ describe('paid routes', () => {
     expect(failed.statusCode).toBe(502);
     expect(failed.headers['x-credits-charged']).toBe('0');
 
-    const reservation = await meter.reserve('org-dev', 'later', 'POST /v1/email/validate', 20, 'later');
+    const reservation = await meter.reserve(identity, 'later', 'POST /v1/email/validate', 20, 'later');
     expect(reservation).toMatchObject({ ok: true, availableCredits: 0 });
   });
 
@@ -98,6 +121,49 @@ describe('paid routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['x-credits-charged']).toBe('17');
     expect(response.headers['x-credits-remaining']).toBe('3');
+  });
+
+  it.each([
+    ['/v1/ocr/text', 8, { text: 'TOTAL 12.00', lines: [] }],
+    ['/v1/ocr/expense', 50, { documents: [] }],
+  ] as const)('charges the published OCR price for %s', async (url, credits, data) => {
+    const app = await appFor(new MemoryUsageMeter(50));
+    const response = await app.inject({
+      method: 'POST', url, headers: paidHeaders(`ocr-${credits}`),
+      payload: { image_base64: 'iVBORw0KGgo=', format: 'png' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['x-credits-charged']).toBe(String(credits));
+    expect(response.json().data).toEqual(data);
+  });
+
+  it('rejects malformed OCR bytes before reserving credits or calling AWS', async () => {
+    const ocrTextProvider = provider({ ok: true, data: { text: '', lines: [] } });
+    const meter = new MemoryUsageMeter(50);
+    const reserve = vi.spyOn(meter, 'reserve');
+    const app = await appFor(meter, { ocrTextProvider });
+    const response = await app.inject({
+      method: 'POST', url: '/v1/ocr/text', headers: paidHeaders('ocr-invalid'),
+      payload: { image_base64: 'dGV4dA==', format: 'png' },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe('bad_request');
+    expect(reserve).not.toHaveBeenCalled();
+    expect(ocrTextProvider.execute).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid OCR image above Fastify\'s default 1 MiB body limit', async () => {
+    const image = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(1_100_000),
+    ]).toString('base64');
+    const app = await appFor(new MemoryUsageMeter(8));
+    const response = await app.inject({
+      method: 'POST', url: '/v1/ocr/text', headers: paidHeaders('ocr-large-valid'),
+      payload: { image_base64: image, format: 'png' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['x-credits-charged']).toBe('8');
   });
 
   it('rejects an AI request whose declared budget cannot cover preflight', async () => {

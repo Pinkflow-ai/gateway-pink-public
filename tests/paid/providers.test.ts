@@ -3,6 +3,8 @@ import { createEmailValidationProvider } from '../../src/providers/email/abstrac
 import { createPhoneLookupProvider } from '../../src/providers/phone/twilio.js';
 import { createScreenshotProvider } from '../../src/providers/screenshot/screenshotone.js';
 import { createSummarizeProvider } from '../../src/providers/ai/openrouter.js';
+import { AnalyzeExpenseCommand, DetectDocumentTextCommand } from '@aws-sdk/client-textract';
+import { createOcrExpenseProvider, createOcrTextProvider } from '../../src/providers/ocr/textract.js';
 
 const ctx = { requestId: 'request-1', timeoutMs: 1000, userAgent: 'test' };
 
@@ -85,6 +87,58 @@ describe('paid provider adapters', () => {
     expect(request).toMatchObject({ response_type: 'json', full_page: true, viewport_width: 1280 });
   });
 
+  it('normalizes Textract text lines and sends decoded image bytes', async () => {
+    const sender = { send: vi.fn(async () => ({ Blocks: [
+      { BlockType: 'WORD', Text: 'ignored', Confidence: 99 },
+      { BlockType: 'LINE', Text: 'TOTAL 12.00', Confidence: 98.765 },
+    ] })) };
+    const result = await createOcrTextProvider('us-west-2', true, sender).execute({
+      imageBase64: 'iVBORw0KGgo=', format: 'png',
+    }, ctx);
+    expect(result).toEqual({ ok: true, data: {
+      text: 'TOTAL 12.00', lines: [{ text: 'TOTAL 12.00', confidence: 98.77 }],
+    } });
+    const command = sender.send.mock.calls[0]![0];
+    expect(command).toBeInstanceOf(DetectDocumentTextCommand);
+    expect(Buffer.from(command.input.Document!.Bytes!)).toEqual(Buffer.from('iVBORw0KGgo=', 'base64'));
+  });
+
+  it('normalizes Textract expense summary and line-item fields', async () => {
+    const sender = { send: vi.fn(async () => ({ ExpenseDocuments: [{
+      ExpenseIndex: 1,
+      SummaryFields: [{
+        Type: { Text: 'TOTAL' }, LabelDetection: { Text: 'Amount due' },
+        ValueDetection: { Text: '$12.00', Confidence: 97.234 },
+      }],
+      LineItemGroups: [{ LineItemGroupIndex: 1, LineItems: [{ LineItemExpenseFields: [{
+        Type: { Text: 'ITEM' }, ValueDetection: { Text: 'Coffee', Confidence: 96 },
+      }] }] }],
+    }] })) };
+    const result = await createOcrExpenseProvider('us-west-2', true, sender).execute({
+      imageBase64: 'iVBORw0KGgo=', format: 'png',
+    }, ctx);
+    expect(result).toEqual({ ok: true, data: { documents: [{
+      index: 1,
+      summaryFields: [{ type: 'TOTAL', label: 'Amount due', value: '$12.00', confidence: 97.23 }],
+      lineItemGroups: [{ index: 1, items: [{ fields: [
+        { type: 'ITEM', label: null, value: 'Coffee', confidence: 96 },
+      ] }] }],
+    }] } });
+    expect(sender.send.mock.calls[0]![0]).toBeInstanceOf(AnalyzeExpenseCommand);
+  });
+
+  it('fails closed when the AWS data-use opt-out is not confirmed', async () => {
+    const sender = { send: vi.fn(async () => ({ Blocks: [] })) };
+    const result = await createOcrTextProvider('us-west-2', false, sender).execute({
+      imageBase64: 'iVBORw0KGgo=', format: 'png',
+    }, ctx);
+    expect(result).toEqual({ ok: false, error: {
+      code: 'provider_unavailable',
+      message: 'OCR provider requires confirmed AWS AI-services data-use opt-out',
+    } });
+    expect(sender.send).not.toHaveBeenCalled();
+  });
+
   it('captures OpenRouter token usage and provider cost for settlement', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: 'Short summary.' } }],
@@ -102,7 +156,7 @@ describe('paid provider adapters', () => {
     expect(request.provider).toEqual({
       sort: 'price',
       data_collection: 'deny',
-      max_price: { prompt: 0.1, completion: 0.4 },
+      max_price: { prompt: 0.0000001, completion: 0.0000004 },
     });
   });
 

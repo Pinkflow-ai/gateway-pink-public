@@ -13,3 +13,16 @@ export const weatherQuerySchema = z.object({
 export const whoisQuerySchema = z.object({
   domain: z.string().min(1).max(253),
 });
+
+export const phoneValidationQuerySchema = z.object({
+  number: z.string().trim().min(2).max(250),
+  country: z.string().trim().length(2).transform((value) => value.toUpperCase()).optional(),
+});
+
+const currencyCode = z.string().trim().length(3).transform((value) => value.toUpperCase());
+
+export const currencyConvertQuerySchema = z.object({
+  amount: z.coerce.number().finite().min(0).max(1_000_000_000_000),
+  from: currencyCode,
+  to: currencyCode,
+});

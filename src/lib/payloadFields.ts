@@ -9,6 +9,7 @@
  */
 export const PAYLOAD_LOG_FIELDS = new Set([
   'body',
+  'rawBody',
   'payload',
   'input',
   'message',

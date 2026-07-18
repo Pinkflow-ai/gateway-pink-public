@@ -1,20 +1,22 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { RuntimeBrowserTimePricing, RuntimeFlatPricing, RuntimeMeteredPricing } from '../../billing/pricing.js';
 import { estimateMeteredCredits } from '../../billing/pricing.js';
-import type { UsageMeter } from '../../billing/types.js';
+import type { BillingIdentity, UsageMeter } from '../../billing/types.js';
 import { makeError } from '../../lib/errors.js';
 import { runBrowserPaidProvider, runFlatPaidProvider, runMeteredPaidProvider } from '../../lib/paidHandler.js';
 import { parse } from '../../lib/parse.js';
 import type { BrowserMeteredProvider, MeteredProvider, Provider } from '../../providers/_registry.js';
-import { browserScreenshotSchema, browserUrlSchema, emailValidationSchema, phoneLookupQuerySchema, screenshotSchema, summarizeSchema } from '../../schemas/paid.js';
+import { browserScreenshotSchema, browserUrlSchema, emailValidationSchema, OCR_HTTP_BODY_LIMIT, ocrDocumentSchema, phoneLookupQuerySchema, screenshotSchema, summarizeSchema } from '../../schemas/paid.js';
 
 export interface PaidRouteDependencies {
   meter: UsageMeter;
-  orgIdForRequest: (request: FastifyRequest) => string;
+  identityForRequest: (request: FastifyRequest) => BillingIdentity;
   prices: {
     email: RuntimeFlatPricing;
     phone: RuntimeFlatPricing;
     screenshot: RuntimeFlatPricing;
+    ocrText: RuntimeFlatPricing;
+    ocrExpense: RuntimeFlatPricing;
     summarize: RuntimeMeteredPricing;
     browserScreenshot: RuntimeBrowserTimePricing;
     browserPdf: RuntimeBrowserTimePricing;
@@ -23,6 +25,8 @@ export interface PaidRouteDependencies {
   emailProvider: Provider<unknown, unknown>;
   phoneProvider: Provider<unknown, unknown>;
   screenshotProvider: Provider<unknown, unknown>;
+  ocrTextProvider: Provider<unknown, unknown>;
+  ocrExpenseProvider: Provider<unknown, unknown>;
   summarizeProvider: MeteredProvider<unknown, unknown>;
   browserScreenshotProvider: BrowserMeteredProvider<unknown, unknown>;
   browserPdfProvider: BrowserMeteredProvider<unknown, unknown>;
@@ -33,19 +37,35 @@ export async function paidRoutes(app: FastifyInstance, deps: PaidRouteDependenci
   app.post('/v1/email/validate', async (req, reply) => {
     const body = parse(emailValidationSchema, req.body, req, reply);
     if (body) await runFlatPaidProvider({ req, reply, route: 'POST /v1/email/validate', provider: deps.emailProvider,
-      input: body, pricing: deps.prices.email, meter: deps.meter, orgIdForRequest: deps.orgIdForRequest });
+      input: body, pricing: deps.prices.email, meter: deps.meter, identityForRequest: deps.identityForRequest });
   });
   app.get('/v1/phone/lookup', async (req, reply) => {
     const query = parse(phoneLookupQuerySchema, req.query, req, reply);
     if (query) await runFlatPaidProvider({ req, reply, route: 'GET /v1/phone/lookup', provider: deps.phoneProvider,
-      input: query, pricing: deps.prices.phone, meter: deps.meter, orgIdForRequest: deps.orgIdForRequest });
+      input: query, pricing: deps.prices.phone, meter: deps.meter, identityForRequest: deps.identityForRequest });
   });
   app.post('/v1/screenshot', async (req, reply) => {
     const body = parse(screenshotSchema, req.body, req, reply);
     if (body) await runFlatPaidProvider({ req, reply, route: 'POST /v1/screenshot', provider: deps.screenshotProvider,
       input: { url: body.url, format: body.format, fullPage: body.full_page,
         viewportWidth: body.viewport_width, viewportHeight: body.viewport_height },
-      pricing: deps.prices.screenshot, meter: deps.meter, orgIdForRequest: deps.orgIdForRequest });
+      pricing: deps.prices.screenshot, meter: deps.meter, identityForRequest: deps.identityForRequest });
+  });
+  app.post('/v1/ocr/text', { bodyLimit: OCR_HTTP_BODY_LIMIT }, async (req, reply) => {
+    const body = parse(ocrDocumentSchema, req.body, req, reply);
+    if (body) await runFlatPaidProvider({
+      req, reply, route: 'POST /v1/ocr/text', provider: deps.ocrTextProvider,
+      input: { imageBase64: body.image_base64, format: body.format },
+      pricing: deps.prices.ocrText, meter: deps.meter, identityForRequest: deps.identityForRequest,
+    });
+  });
+  app.post('/v1/ocr/expense', { bodyLimit: OCR_HTTP_BODY_LIMIT }, async (req, reply) => {
+    const body = parse(ocrDocumentSchema, req.body, req, reply);
+    if (body) await runFlatPaidProvider({
+      req, reply, route: 'POST /v1/ocr/expense', provider: deps.ocrExpenseProvider,
+      input: { imageBase64: body.image_base64, format: body.format },
+      pricing: deps.prices.ocrExpense, meter: deps.meter, identityForRequest: deps.identityForRequest,
+    });
   });
   app.post('/v1/ai/summarize', async (req, reply) => {
     const body = parse(summarizeSchema, req.body, req, reply);
@@ -64,7 +84,7 @@ export async function paidRoutes(app: FastifyInstance, deps: PaidRouteDependenci
     await runMeteredPaidProvider({ req, reply, route: 'POST /v1/ai/summarize', provider: deps.summarizeProvider,
       input: { text: body.text, style: body.style, maxOutputTokens: body.max_output_tokens },
       maxCredits: body.max_credits, pricing: deps.prices.summarize,
-      meter: deps.meter, orgIdForRequest: deps.orgIdForRequest });
+      meter: deps.meter, identityForRequest: deps.identityForRequest });
   });
   app.post('/v1/browser/screenshot', async (req, reply) => {
     const body = parse(browserScreenshotSchema, req.body, req, reply);
@@ -72,21 +92,21 @@ export async function paidRoutes(app: FastifyInstance, deps: PaidRouteDependenci
       req, reply, route: 'POST /v1/browser/screenshot', provider: deps.browserScreenshotProvider,
       input: { url: body.url, format: body.format, fullPage: body.full_page,
         viewportWidth: body.viewport_width, viewportHeight: body.viewport_height },
-      pricing: deps.prices.browserScreenshot, meter: deps.meter, orgIdForRequest: deps.orgIdForRequest,
+      pricing: deps.prices.browserScreenshot, meter: deps.meter, identityForRequest: deps.identityForRequest,
     });
   });
   app.post('/v1/browser/pdf', async (req, reply) => {
     const body = parse(browserUrlSchema, req.body, req, reply);
     if (body) await runBrowserPaidProvider({
       req, reply, route: 'POST /v1/browser/pdf', provider: deps.browserPdfProvider,
-      input: body, pricing: deps.prices.browserPdf, meter: deps.meter, orgIdForRequest: deps.orgIdForRequest,
+      input: body, pricing: deps.prices.browserPdf, meter: deps.meter, identityForRequest: deps.identityForRequest,
     });
   });
   app.post('/v1/browser/markdown', async (req, reply) => {
     const body = parse(browserUrlSchema, req.body, req, reply);
     if (body) await runBrowserPaidProvider({
       req, reply, route: 'POST /v1/browser/markdown', provider: deps.browserMarkdownProvider,
-      input: body, pricing: deps.prices.browserMarkdown, meter: deps.meter, orgIdForRequest: deps.orgIdForRequest,
+      input: body, pricing: deps.prices.browserMarkdown, meter: deps.meter, identityForRequest: deps.identityForRequest,
     });
   });
 }

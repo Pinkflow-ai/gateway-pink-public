@@ -45,33 +45,47 @@ export const ROUTE_POLICIES: RoutePolicy[] = [
   { route: 'POST /v1/compute/color', storagePolicy: 'none', storesPayload: false },
   { route: 'POST /v1/compute/text-stats', storagePolicy: 'none', storesPayload: false },
   { route: 'POST /v1/security/password-exposure', storagePolicy: 'none', storesPayload: false },
+  { route: 'GET /v1/phone/validate', storagePolicy: 'none', storesPayload: false },
 
   // data APIs — payload not stored, response cached briefly for quota economy
   { route: 'GET /v1/dns/resolve', storagePolicy: 'cached-ttl', storesPayload: false },
   { route: 'GET /v1/weather', storagePolicy: 'cached-ttl', storesPayload: false },
   { route: 'GET /v1/whois/lookup', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'GET /v1/currency/convert', storagePolicy: 'cached-ttl', storesPayload: false },
 
   // paid APIs — request payload is forwarded, never persisted by Gateway.pink
   { route: 'POST /v1/email/validate', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'GET /v1/phone/lookup', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/screenshot', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'POST /v1/ocr/text', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'POST /v1/ocr/expense', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/ai/summarize', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/browser/screenshot', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/browser/pdf', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/browser/markdown', storagePolicy: 'metadata-only', storesPayload: false },
 ];
 
+/** Operational routes are visible in the storage disclosure but are not
+ * customer API products and therefore do not belong in the pricing manifest. */
+export const OPERATIONAL_ROUTE_POLICIES: RoutePolicy[] = [
+  { route: 'POST /v1/billing/checkout', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'GET /v1/mcp/entitlement', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'POST /webhooks/paddle', storagePolicy: 'metadata-only', storesPayload: false },
+];
+
+const ALL_ROUTE_POLICIES = [...ROUTE_POLICIES, ...OPERATIONAL_ROUTE_POLICIES];
+
 /** Routes that carry the X-Gateway-No-Store header. */
 export const NO_STORE_ROUTES = new Set(
-  ROUTE_POLICIES.filter((r) => r.storagePolicy === 'none').map((r) => r.route),
+  ALL_ROUTE_POLICIES.filter((r) => r.storagePolicy === 'none').map((r) => r.route),
 );
 
 /** Lookup by route key. */
 export const policyFor = (route: RouteKey): RoutePolicy | undefined =>
-  ROUTE_POLICIES.find((r) => r.route === route);
+  ALL_ROUTE_POLICIES.find((r) => r.route === route);
 
 /** The machine-readable table surfaced at GET /v1/storage-policy. */
-export const storagePolicyTable = ROUTE_POLICIES.map((r) => ({
+export const storagePolicyTable = ALL_ROUTE_POLICIES.map((r) => ({
   endpoint: r.route,
   storagePolicy: r.storagePolicy,
   storesPayload: r.storesPayload,

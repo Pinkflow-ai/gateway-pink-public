@@ -42,12 +42,14 @@ describe('central access logging', () => {
         query: { email: 'query@example.com' },
         params: { domain: 'private.example' },
         body: { input: 'body-secret' },
+        rawBody: Buffer.from('webhook-payload-secret'),
       },
+      rawBody: 'root-webhook-payload-secret',
       message: 'message-secret',
       output: 'output-secret',
     });
     const serialized = lines.join('');
-    for (const secret of ['query-secret', 'query@example.com', 'private.example', 'body-secret', 'message-secret', 'output-secret']) {
+    for (const secret of ['query-secret', 'query@example.com', 'private.example', 'body-secret', 'webhook-payload-secret', 'root-webhook-payload-secret', 'message-secret', 'output-secret']) {
       expect(serialized).not.toContain(secret);
     }
   });

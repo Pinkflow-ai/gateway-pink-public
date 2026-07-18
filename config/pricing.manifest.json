@@ -22,6 +22,10 @@
       "kind": "free",
       "credits": 0
     },
+    "GET /v1/currency/convert": {
+      "kind": "free",
+      "credits": 0
+    },
     "GET /v1/dns/resolve": {
       "kind": "free",
       "credits": 0
@@ -29,6 +33,10 @@
     "GET /v1/phone/lookup": {
       "kind": "flat",
       "credits": 40
+    },
+    "GET /v1/phone/validate": {
+      "kind": "free",
+      "credits": 0
     },
     "GET /v1/weather": {
       "kind": "free",
@@ -144,6 +152,14 @@
     "POST /v1/email/validate": {
       "kind": "flat",
       "credits": 17
+    },
+    "POST /v1/ocr/expense": {
+      "kind": "flat",
+      "credits": 50
+    },
+    "POST /v1/ocr/text": {
+      "kind": "flat",
+      "credits": 8
     },
     "POST /v1/screenshot": {
       "kind": "flat",
