@@ -113,3 +113,23 @@ or by us. The public dev gateway applies a `RATE_LIMIT_PER_MINUTE` network guard
 (default 120) and bounded 10/30/60 route classes keyed by an API-key fingerprint,
 or by source IP in intentional open mode. Production Redis limiting remains a
 separate runtime adapter.
+
+## Deployment boundary
+
+This repository is the public Fastify API/runtime audit surface. It is **not**
+the static site deployed at `gateway.pink`, and it must not be deployed with
+`wrangler pages deploy`. The live Pages site is built from the private sibling
+repository's `apps/web/` directory.
+
+Before any future runtime deployment, validate this repository with:
+
+```bash
+npm ci
+npm run typecheck
+npm test
+npm run build
+```
+
+It still needs a production runtime with durable Postgres billing/auth, Redis
+rate limits, provider credentials, and environment secrets. No production API
+deployment command is documented because that runtime has not been deployed.
