@@ -15,6 +15,8 @@ the boundary clearly.
 | `src/ratelimit/**` | Local and Redis rate-limit algorithms. Redis URLs and credentials remain environment-only. |
 | `config/pricing.manifest.json` | Generated customer prices and the model-rate snapshot required for safe preflight. Flat upstream costs and margins are not included. |
 | `src/policy/**` | Storage-policy tags and the `/v1/storage-policy` endpoint. |
+| `src/mcp/**` | The entitlement-gated MCP stdio adapter. It derives tools from the same customer manifest and contains no keys. |
+| `openapi/**`, `sdks/**` | Generated customer contracts and clients. They contain public routes and prices only. |
 | `src/log.ts` | The logger, including the redact paths. This is the §8.4 mechanism, visible. |
 | `tests/guard-no-payload.test.ts` | The guard test. It's the enforcement, not just a claim. |
 | `tests/**` | Unit and fixture tests. No real secrets, no customer data. |
@@ -40,6 +42,9 @@ These live in the **private** repo, not here:
   in-memory balance and reservations; it writes no events or payloads.
 - **Production secrets.** No real keys, tokens, or upstream credentials are
   committed. `.env` is gitignored; `.env.example` carries only defaults.
+- **MCP entitlements.** The public adapter checks a boolean on the authenticated
+  API-key principal. The purchase history and database function that grants it
+  remain private.
 
 ## Before each publish
 

@@ -9,9 +9,14 @@ const document = generateOpenApi(loadPricingManifest('./config/pricing.manifest.
 mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, `${JSON.stringify(document, null, 2)}\n`);
 
-const typescriptTarget = resolve('sdks/typescript/src/index.ts');
-mkdirSync(dirname(typescriptTarget), { recursive: true });
-writeFileSync(typescriptTarget, generateTypeScriptSdk(loadPricingManifest('./config/pricing.manifest.json')));
+const typescript = generateTypeScriptSdk(loadPricingManifest('./config/pricing.manifest.json'));
+for (const typescriptTarget of [
+  resolve('sdks/typescript/src/index.ts'),
+  resolve('src/generated/gatewayClient.ts'),
+]) {
+  mkdirSync(dirname(typescriptTarget), { recursive: true });
+  writeFileSync(typescriptTarget, typescript);
+}
 
 const pythonTarget = resolve('sdks/python/gateway_pink/client.py');
 mkdirSync(dirname(pythonTarget), { recursive: true });

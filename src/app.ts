@@ -16,6 +16,7 @@ import { dnsRoutes } from './routes/dns/resolve.js';
 import { healthRoute, type DependencyReadiness } from './routes/health.js';
 import { paidRoutes, type PaidRouteDependencies } from './routes/paid/index.js';
 import { paddleBillingRoutes, type PaddleRouteDependencies } from './routes/billing/paddle.js';
+import { mcpEntitlementRoute } from './routes/mcp/entitlement.js';
 import { createPaidRouteDependencies } from './routes/paid/runtime.js';
 import { passwordExposureRoute } from './routes/security/passwordExposure.js';
 import { weatherRoutes } from './routes/weather/us.js';
@@ -56,6 +57,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     paidRoutesState: options.paidRoutesState,
   });
   await app.register(policyRoutes);
+  await app.register(mcpEntitlementRoute);
   await app.register(computeRoutes);
   await app.register(dnsRoutes);
   await app.register(weatherRoutes);

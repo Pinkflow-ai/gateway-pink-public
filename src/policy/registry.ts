@@ -65,6 +65,7 @@ export const ROUTE_POLICIES: RoutePolicy[] = [
  * customer API products and therefore do not belong in the pricing manifest. */
 export const OPERATIONAL_ROUTE_POLICIES: RoutePolicy[] = [
   { route: 'POST /v1/billing/checkout', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'GET /v1/mcp/entitlement', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /webhooks/paddle', storagePolicy: 'metadata-only', storesPayload: false },
 ];
 

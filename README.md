@@ -167,6 +167,25 @@ Redis respond. A dependency error never converts an authenticated, paid, or
 rate-limited request into a free/open request. See `.env.example` for the full
 non-secret configuration contract.
 
+## MCP adapter
+
+The stdio MCP server exposes exactly the customer routes generated from the
+pricing manifest. Billing checkout, Paddle webhooks, and administrative
+operations are not tools. Tool discovery and every tool call first verify the
+authenticated API key's durable `mcp_enabled` entitlement. Paid tools state
+their maximum charge, create an idempotency key, and apply that published credit
+ceiling through the shared generated client.
+
+```bash
+npm run build
+GATEWAY_API_KEY=gp_... GATEWAY_API_URL=https://api.gateway.pink \
+  node dist/mcp/stdio.js
+```
+
+The adapter follows the MCP 2025-06-18 lifecycle and newline-delimited stdio
+transport through the recommended stable v1 TypeScript SDK. The production URL
+above remains reserved until deployment is independently verified.
+
 ## Observability (optional)
 
 `docker compose up` brings up the gateway plus Loki, Promtail, and Grafana with
@@ -178,7 +197,7 @@ logs JSON to stdout; Promtail ships it to Loki. No payload data is ever logged
 
 This is inspectable runtime source, not the private commercial or data layer. It
 does not contain database migrations, private provider cost bases, customer
-records, deployment secrets, private payment tables/migrations, or MCP. It does
+records, deployment secrets, or private payment tables/migrations. It does
 contain the inspectable checkout, signature-verification, event-validation, and
 parameterized fulfillment adapters. Development remains
 open/in-memory only when explicitly configured; production modes are durable and
