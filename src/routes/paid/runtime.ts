@@ -9,18 +9,25 @@ import { createPhoneLookupProvider } from '../../providers/phone/twilio.js';
 import { createScreenshotProvider } from '../../providers/screenshot/screenshotone.js';
 import type { PaidRouteDependencies } from './index.js';
 import { createCloudflareBrowserProvider } from '../../providers/browser/cloudflare.js';
+import type { BillingIdentity, UsageMeter } from '../../billing/types.js';
 
-export function createPaidRouteDependencies(): PaidRouteDependencies {
+export interface PaidRuntimeOptions {
+  meter?: UsageMeter;
+  identityForRequest?: (request: FastifyRequest) => BillingIdentity;
+}
+
+export function createPaidRouteDependencies(options: PaidRuntimeOptions = {}): PaidRouteDependencies {
   const manifest = loadPricingManifest(config.pricingManifestPath);
   const summarizePricing = meteredPrice(manifest, 'POST /v1/ai/summarize');
-  const meter = config.billingMode === 'memory'
+  const meter = options.meter ?? (config.billingMode === 'memory'
     ? new MemoryUsageMeter(config.devCreditBalance)
-    : new UnavailableUsageMeter();
+    : new UnavailableUsageMeter());
   return {
     meter,
     // The public runtime only has dev bearer auth. Production replaces this
     // resolver and meter with the private key-store + Postgres RPC adapter.
-    orgIdForRequest: (_request: FastifyRequest) => 'org-dev',
+    identityForRequest: options.identityForRequest ?? ((request: FastifyRequest) => request.gatewayPrincipal
+      ?? { orgId: 'org-dev', apiKeyId: 'dev-open' }),
     prices: {
       email: flatPrice(manifest, 'POST /v1/email/validate'),
       phone: flatPrice(manifest, 'GET /v1/phone/lookup'),

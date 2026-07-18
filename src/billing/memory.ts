@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  BillingIdentity,
   CreditReservation,
   ReserveResult,
   SettlementResult,
@@ -38,7 +39,8 @@ export class MemoryUsageMeter implements UsageMeter {
     return this.balance - holds;
   }
 
-  async reserve(orgId: string, requestId: string, route: string, credits: number, inputFingerprint: string): Promise<ReserveResult> {
+  async reserve(identity: BillingIdentity, requestId: string, route: string, credits: number, inputFingerprint: string): Promise<ReserveResult> {
+    const { orgId, apiKeyId } = identity;
     if (!Number.isSafeInteger(credits) || credits <= 0) throw new RangeError('reserved credits must be positive');
     const availableCredits = this.availableCredits(orgId);
     const previousId = this.reservationByRequest.get(requestId);
@@ -61,7 +63,7 @@ export class MemoryUsageMeter implements UsageMeter {
       return { ok: false, reason: 'insufficient_credits', availableCredits };
     }
     const reservation: ActiveReservation = {
-      id: randomUUID(), orgId, requestId, route, reservedCredits: credits, inputFingerprint, state: 'active',
+      id: randomUUID(), orgId, apiKeyId, requestId, route, reservedCredits: credits, inputFingerprint, state: 'active',
     };
     this.reservations.set(reservation.id, reservation);
     this.reservationByRequest.set(requestId, reservation.id);

@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { RuntimeBrowserTimePricing, RuntimeFlatPricing, RuntimeMeteredPricing } from '../billing/pricing.js';
 import { creditsForBrowserTime, creditsForProviderCost, directCostForBrowserTime } from '../billing/pricing.js';
 import type { UsageMeter } from '../billing/types.js';
+import type { BillingIdentity } from '../billing/types.js';
 import type { BrowserMeteredProvider, MeteredProvider, Provider, ProviderContext, ProviderResult } from '../providers/_registry.js';
 import { config } from '../config.js';
 import { ERROR_STATUS, makeError, toUnexpectedError } from './errors.js';
@@ -9,7 +10,11 @@ import { policyFor } from '../policy/registry.js';
 import { annotateAccess } from '../observability/access.js';
 import { billingRequestId, idempotencyKeyFor, requestFingerprint } from './idempotency.js';
 
-type OrgIdForRequest = (request: FastifyRequest) => string;
+type IdentityForRequest = (request: FastifyRequest) => BillingIdentity;
+
+function durationSince(startedAt: number): number {
+  return Math.max(0, Date.now() - startedAt);
+}
 
 function headers(req: FastifyRequest, reply: FastifyReply, route: string): void {
   const policy = policyFor(route);
@@ -33,6 +38,18 @@ function reserveFailure(
   }
   if (result.reason === 'billing_unknown') {
     reply.code(503).send(makeError('billing_unknown', 'settlement state is pending reconciliation', req.id));
+    return;
+  }
+  if (result.reason === 'org_billing_disabled') {
+    reply.code(403).send(makeError(
+      'org_billing_disabled', 'paid access is not enabled for this organization', req.id,
+    ));
+    return;
+  }
+  if (result.reason === 'billing_debt') {
+    reply.code(402).send(makeError(
+      'billing_debt', 'organization billing requires resolution before paid calls', req.id,
+    ));
     return;
   }
   if (['idempotency_mismatch', 'request_in_progress', 'request_already_settled', 'request_already_failed'].includes(result.reason)) {
@@ -87,18 +104,19 @@ async function executeProvider<Req, Res>(
 
 export async function runFlatPaidProvider<Req, Res>(args: {
   req: FastifyRequest; reply: FastifyReply; route: string; provider: Provider<Req, Res>;
-  input: Req; pricing: RuntimeFlatPricing; meter: UsageMeter; orgIdForRequest: OrgIdForRequest;
+  input: Req; pricing: RuntimeFlatPricing; meter: UsageMeter; identityForRequest: IdentityForRequest;
 }): Promise<void> {
-  const { req, reply, route, provider, input, pricing, meter, orgIdForRequest } = args;
+  const { req, reply, route, provider, input, pricing, meter, identityForRequest } = args;
+  const startedAt = Date.now();
   headers(req, reply, route);
-  const orgId = orgIdForRequest(req);
-  const identity = billingIdentity(req, reply, route, input, orgId);
-  if (!identity) {
+  const principal = identityForRequest(req);
+  const billing = billingIdentity(req, reply, route, input, principal.orgId);
+  if (!billing) {
     annotateAccess(req, { provider: provider.id, billing_outcome: 'idempotency_key_required', error_code: 'idempotency_key_required' });
     return;
   }
   annotateAccess(req, { provider: provider.id, billing_outcome: 'reserving' });
-  const reserved = await meter.reserve(orgId, identity.requestId, route, pricing.credits, identity.fingerprint);
+  const reserved = await meter.reserve(principal, billing.requestId, route, pricing.credits, billing.fingerprint);
   if (!reserved.ok) { annotateAccess(req, { billing_outcome: reserved.reason }); reserveFailure(reply, req, reserved); return; }
 
   let result: ProviderResult<Res>;
@@ -106,7 +124,7 @@ export async function runFlatPaidProvider<Req, Res>(args: {
     result = await executeProvider(provider, input, req);
   } catch (error) {
     try {
-      const released = await meter.release(reserved.reservation);
+      const released = await meter.release(reserved.reservation, { httpStatus: 500, durationMs: durationSince(startedAt) });
       reply.header('X-Credits-Charged', '0').header('X-Credits-Remaining', String(released.balanceAfter));
       const envelope = toUnexpectedError(error, req.id);
       annotateAccess(req, { billing_outcome: 'released', error_code: envelope.error.code, credits: 0 });
@@ -120,9 +138,9 @@ export async function runFlatPaidProvider<Req, Res>(args: {
 
   if (!result.ok) {
     try {
-      const released = await meter.release(reserved.reservation);
-      reply.header('X-Credits-Charged', '0').header('X-Credits-Remaining', String(released.balanceAfter));
       const status = ERROR_STATUS[result.error.code] ?? 502;
+      const released = await meter.release(reserved.reservation, { httpStatus: status, durationMs: durationSince(startedAt) });
+      reply.header('X-Credits-Charged', '0').header('X-Credits-Remaining', String(released.balanceAfter));
       annotateAccess(req, { billing_outcome: 'released', error_code: result.error.code, credits: 0 });
       reply.code(status).send(makeError(result.error.code, result.error.message, req.id));
     } catch {
@@ -132,7 +150,7 @@ export async function runFlatPaidProvider<Req, Res>(args: {
     return;
   }
 
-  const usage = { actualCredits: pricing.credits };
+  const usage = { actualCredits: pricing.credits, httpStatus: 200, durationMs: durationSince(startedAt) };
   let settlement;
   try {
     await meter.prepare(reserved.reservation, usage);
@@ -151,19 +169,20 @@ export async function runFlatPaidProvider<Req, Res>(args: {
 export async function runMeteredPaidProvider<Req, Res>(args: {
   req: FastifyRequest; reply: FastifyReply; route: string; provider: MeteredProvider<Req, Res>;
   input: Req; maxCredits: number; pricing: RuntimeMeteredPricing; meter: UsageMeter;
-  orgIdForRequest: OrgIdForRequest;
+  identityForRequest: IdentityForRequest;
 }): Promise<void> {
-  const { req, reply, route, provider, input, maxCredits, pricing, meter, orgIdForRequest } = args;
+  const { req, reply, route, provider, input, maxCredits, pricing, meter, identityForRequest } = args;
+  const startedAt = Date.now();
   headers(req, reply, route);
-  const orgId = orgIdForRequest(req);
-  const identity = billingIdentity(req, reply, route, { input, maxCredits }, orgId);
-  if (!identity) {
+  const principal = identityForRequest(req);
+  const billing = billingIdentity(req, reply, route, { input, maxCredits }, principal.orgId);
+  if (!billing) {
     annotateAccess(req, { provider: provider.id, billing_outcome: 'idempotency_key_required', error_code: 'idempotency_key_required' });
     return;
   }
   annotateAccess(req, { provider: provider.id, billing_outcome: 'reserving' });
   const reserveCredits = Math.min(maxCredits, pricing.reserveCredits);
-  const reserved = await meter.reserve(orgId, identity.requestId, route, reserveCredits, identity.fingerprint);
+  const reserved = await meter.reserve(principal, billing.requestId, route, reserveCredits, billing.fingerprint);
   if (!reserved.ok) { annotateAccess(req, { billing_outcome: reserved.reason }); reserveFailure(reply, req, reserved); return; }
 
   let result: Awaited<ReturnType<MeteredProvider<Req, Res>['execute']>>;
@@ -171,7 +190,7 @@ export async function runMeteredPaidProvider<Req, Res>(args: {
     result = await provider.execute(input, context(req));
   } catch (error) {
     try {
-      const released = await meter.release(reserved.reservation);
+      const released = await meter.release(reserved.reservation, { httpStatus: 500, durationMs: durationSince(startedAt) });
       reply.header('X-Credits-Charged', '0').header('X-Credits-Remaining', String(released.balanceAfter));
       const envelope = toUnexpectedError(error, req.id);
       annotateAccess(req, { billing_outcome: 'released', error_code: envelope.error.code, credits: 0 });
@@ -185,9 +204,9 @@ export async function runMeteredPaidProvider<Req, Res>(args: {
 
   if (!result.ok) {
     try {
-      const released = await meter.release(reserved.reservation);
-      reply.header('X-Credits-Charged', '0').header('X-Credits-Remaining', String(released.balanceAfter));
       const status = ERROR_STATUS[result.error.code] ?? 502;
+      const released = await meter.release(reserved.reservation, { httpStatus: status, durationMs: durationSince(startedAt) });
+      reply.header('X-Credits-Charged', '0').header('X-Credits-Remaining', String(released.balanceAfter));
       annotateAccess(req, { billing_outcome: 'released', error_code: result.error.code, credits: 0 });
       reply.code(status).send(makeError(result.error.code, result.error.message, req.id));
     } catch {
@@ -201,6 +220,8 @@ export async function runMeteredPaidProvider<Req, Res>(args: {
   const actualCredits = creditsForProviderCost(upstreamCostMicros, pricing);
   const usage = {
     actualCredits,
+    httpStatus: 200,
+    durationMs: durationSince(startedAt),
     inputTokens: result.metering.inputTokens,
     outputTokens: result.metering.outputTokens,
     upstreamCostMicros,
@@ -232,18 +253,19 @@ export async function runMeteredPaidProvider<Req, Res>(args: {
 
 export async function runBrowserPaidProvider<Req, Res>(args: {
   req: FastifyRequest; reply: FastifyReply; route: string; provider: BrowserMeteredProvider<Req, Res>;
-  input: Req; pricing: RuntimeBrowserTimePricing; meter: UsageMeter; orgIdForRequest: OrgIdForRequest;
+  input: Req; pricing: RuntimeBrowserTimePricing; meter: UsageMeter; identityForRequest: IdentityForRequest;
 }): Promise<void> {
-  const { req, reply, route, provider, input, pricing, meter, orgIdForRequest } = args;
+  const { req, reply, route, provider, input, pricing, meter, identityForRequest } = args;
+  const startedAt = Date.now();
   headers(req, reply, route);
-  const orgId = orgIdForRequest(req);
-  const identity = billingIdentity(req, reply, route, input, orgId);
-  if (!identity) {
+  const principal = identityForRequest(req);
+  const billing = billingIdentity(req, reply, route, input, principal.orgId);
+  if (!billing) {
     annotateAccess(req, { provider: provider.id, billing_outcome: 'idempotency_key_required', error_code: 'idempotency_key_required' });
     return;
   }
   annotateAccess(req, { provider: provider.id, billing_outcome: 'reserving' });
-  const reserved = await meter.reserve(orgId, identity.requestId, route, pricing.reserveCredits, identity.fingerprint);
+  const reserved = await meter.reserve(principal, billing.requestId, route, pricing.reserveCredits, billing.fingerprint);
   if (!reserved.ok) {
     annotateAccess(req, { billing_outcome: reserved.reason });
     reserveFailure(reply, req, reserved);
@@ -255,7 +277,7 @@ export async function runBrowserPaidProvider<Req, Res>(args: {
     result = await provider.execute(input, context(req));
   } catch (error) {
     try {
-      const released = await meter.release(reserved.reservation);
+      const released = await meter.release(reserved.reservation, { httpStatus: 500, durationMs: durationSince(startedAt) });
       reply.header('X-Credits-Charged', '0').header('X-Credits-Remaining', String(released.balanceAfter));
       const envelope = toUnexpectedError(error, req.id);
       annotateAccess(req, { billing_outcome: 'released', error_code: envelope.error.code, credits: 0 });
@@ -269,10 +291,10 @@ export async function runBrowserPaidProvider<Req, Res>(args: {
 
   if (!result.ok) {
     try {
-      const released = await meter.release(reserved.reservation);
       if (result.error.code === 'provider_price_overrun') await meter.disableRoute(route);
-      reply.header('X-Credits-Charged', '0').header('X-Credits-Remaining', String(released.balanceAfter));
       const status = ERROR_STATUS[result.error.code] ?? 502;
+      const released = await meter.release(reserved.reservation, { httpStatus: status, durationMs: durationSince(startedAt) });
+      reply.header('X-Credits-Charged', '0').header('X-Credits-Remaining', String(released.balanceAfter));
       annotateAccess(req, { billing_outcome: 'released', error_code: result.error.code, credits: 0 });
       reply.code(status).send(makeError(result.error.code, result.error.message, req.id));
     } catch {
@@ -285,6 +307,8 @@ export async function runBrowserPaidProvider<Req, Res>(args: {
   const actualCredits = creditsForBrowserTime(result.metering.browserMs, pricing);
   const usage = {
     actualCredits,
+    httpStatus: 200,
+    durationMs: durationSince(startedAt),
     upstreamCostMicros: directCostForBrowserTime(result.metering.browserMs, pricing),
   };
   let settlement;

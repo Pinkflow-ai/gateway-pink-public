@@ -25,6 +25,7 @@ const browserPrice = {
 const markdownPrice = { ...browserPrice, maximumBrowserMs: 16_000, reserveCredits: 3 };
 const source = { name: 'test', url: 'https://example.test', license: 'test' };
 const paidHeaders = (key: string) => ({ 'idempotency-key': key });
+const identity = { orgId: 'org-dev', apiKeyId: 'key-dev' };
 
 function provider(result: Awaited<ReturnType<Provider<unknown, unknown>['execute']>>): Provider<unknown, unknown> {
   return { id: 'test', source, storagePolicy: 'metadata-only', execute: vi.fn(async () => result) };
@@ -54,7 +55,7 @@ async function appFor(meter: MemoryUsageMeter, overrides: Partial<PaidRouteDepen
   const app = Fastify();
   const deps: PaidRouteDependencies = {
     meter,
-    orgIdForRequest: () => 'org-dev',
+    identityForRequest: () => identity,
     prices: { email: emailPrice, phone: phonePrice, screenshot: screenshotPrice, summarize: metered,
       browserScreenshot: browserPrice, browserPdf: browserPrice, browserMarkdown: markdownPrice },
     emailProvider: provider({ ok: true, data: { valid: true } }),
@@ -80,6 +81,23 @@ describe('paid routes', () => {
     expect(emailProvider.execute).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['org_billing_disabled', 403],
+    ['billing_debt', 402],
+  ] as const)('fails before the provider when org billing returns %s', async (reason, status) => {
+    const emailProvider = provider({ ok: true, data: { valid: true } });
+    const meter = new MemoryUsageMeter(100);
+    vi.spyOn(meter, 'reserve').mockResolvedValue({ ok: false, reason, availableCredits: 100 } as never);
+    const app = await appFor(meter, { emailProvider });
+    const response = await app.inject({
+      method: 'POST', url: '/v1/email/validate', headers: paidHeaders(`org-${reason}`),
+      payload: { email: 'person@example.com' },
+    });
+    expect(response.statusCode).toBe(status);
+    expect(response.json().error.code).toBe(reason);
+    expect(emailProvider.execute).not.toHaveBeenCalled();
+  });
+
   it('releases the reservation and charges zero on provider failure', async () => {
     const emailProvider = provider({ ok: false, error: { code: 'upstream_error', message: 'provider down' } });
     const meter = new MemoryUsageMeter(20);
@@ -88,7 +106,7 @@ describe('paid routes', () => {
     expect(failed.statusCode).toBe(502);
     expect(failed.headers['x-credits-charged']).toBe('0');
 
-    const reservation = await meter.reserve('org-dev', 'later', 'POST /v1/email/validate', 20, 'later');
+    const reservation = await meter.reserve(identity, 'later', 'POST /v1/email/validate', 20, 'later');
     expect(reservation).toMatchObject({ ok: true, availableCredits: 0 });
   });
 

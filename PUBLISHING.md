@@ -10,7 +10,9 @@ the boundary clearly.
 |---|---|
 | `src/routes/**` | The route handlers. Reading them is the proof — there's no `INSERT`, no `logger.info(req.body)`, no analytics emit carrying the payload. |
 | `src/providers/**` | The provider implementations. Compute ones are pure functions; data ones map upstream output into our own response shape. |
-| `src/billing/**` | Runtime manifest validation, integer metered-cost math, and a process-local development reservation meter. It contains no customer data or private cost basis. |
+| `src/auth/**` | Bearer parsing, one-way key digesting, and the parameterized production lookup adapter. It contains no keys or pepper. |
+| `src/billing/**` | Runtime manifest validation, integer metered-cost math, development meter, and parameterized production adapters. It contains no customer data, schema, or private cost basis. |
+| `src/ratelimit/**` | Local and Redis rate-limit algorithms. Redis URLs and credentials remain environment-only. |
 | `config/pricing.manifest.json` | Generated customer prices and the model-rate snapshot required for safe preflight. Flat upstream costs and margins are not included. |
 | `src/policy/**` | Storage-policy tags and the `/v1/storage-policy` endpoint. |
 | `src/log.ts` | The logger, including the redact paths. This is the §8.4 mechanism, visible. |
@@ -23,11 +25,12 @@ the boundary clearly.
 
 These live in the **private** repo, not here:
 
-- **The production key store.** Real API keys are hashed and stored in
-  Postgres; the auth here is dev-only (a comma list in `GATEWAY_DEV_KEYS`).
-- **The durable credit ledger and production adapter.** The public dev meter is
-  process-local and off by default; Postgres tables/RPCs and upstream flat-cost
-  economics stay private.
+- **The production key store and schema.** This repo shows how a digest is
+  queried, but real key rows, the pepper, migrations, and revocation data remain
+  private/environment-owned.
+- **The durable credit ledger schema.** The public adapter exposes only the
+  parameterized function contract. Tables, migrations, customer balances, and
+  upstream flat-cost economics stay private.
 - **The full catalog strategy.** The public manifest contains customer-facing
   runtime prices, not internal flat-route cost basis or pack strategy.
 - **Customer / usage data.** None is present. The dev meter holds only an
@@ -38,8 +41,8 @@ These live in the **private** repo, not here:
 ## Before each publish
 
 1. Confirm `git status` shows no `.env` file staged.
-2. Confirm no new file under `src/` imports a persistence client
-   (`pg`, `ioredis`, etc.) in a compute route — the guard test enforces this,
-   but re-running `npm test` before tagging is cheap.
+2. Confirm no compute route/provider imports the database or Redis adapters —
+   the guard test enforces this boundary, but re-running `npm test` before
+   tagging is cheap.
 3. Confirm no fixture or example contains real customer data. Fixtures are
    hand-written samples; if one was pasted from a real response, rewrite it.

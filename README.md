@@ -13,8 +13,12 @@ check themselves instead of taking on trust.
 - `src/routes/` — the HTTP routes (Fastify).
 - `src/providers/` — one file per API. Compute providers are pure functions;
   data providers (DNS, NOAA weather, RDAP) and paid adapters call real upstreams.
-- `src/billing/` — generated-manifest validation, metered pricing math, and a
-  fail-closed process-local reservation meter for development.
+- `src/auth/` — development bearer auth plus the production HMAC-digest
+  Postgres resolver. Plaintext keys are never stored or logged.
+- `src/billing/` — generated-manifest validation, metered pricing math,
+  process-local development billing, and the production Postgres adapter.
+- `src/ratelimit/` — bounded local limits plus the atomic Redis rolling-window
+  adapter used across production instances.
 - `src/policy/` — the per-route storage policy and `GET /v1/storage-policy`.
 - `src/log.ts` — the pino logger with the redaction hook that strips bodies
   before serialization.
@@ -91,6 +95,35 @@ provider routes with data collection denied. Provider-backed inputs still go
 to the named upstream to perform the call; Gateway.pink itself does not persist
 them.
 
+## Production runtime gate
+
+The production adapters are inspectable in this repo but are not proof that the
+hosted service is deployed. Production refuses to start unless identity,
+billing, and distributed limits are selected together:
+
+```bash
+RUNTIME_ENV=production
+AUTH_MODE=postgres
+BILLING_MODE=postgres
+RATE_LIMIT_MODE=redis
+DATABASE_URL=postgresql://...
+DATABASE_SSL=require
+REDIS_URL=rediss://...
+GATEWAY_KEY_PEPPER=... # at least 32 random characters
+```
+
+API-key lookup uses HMAC-SHA256 of the full key with
+`GATEWAY_KEY_PEPPER`; only the digest and display prefix live in Postgres.
+Revoked rows stop authenticating immediately. Paid calls reserve, prepare, and
+settle through the private schema's service-role functions with the authenticated
+organization and key IDs. Free calls write only endpoint/status/duration usage
+metadata. Redis enforces both source-network and authenticated route scopes.
+
+`GET /health` is liveness-only. `GET /ready` returns 503 until both Postgres and
+Redis respond. A dependency error never converts an authenticated, paid, or
+rate-limited request into a free/open request. See `.env.example` for the full
+non-secret configuration contract.
+
 ## Observability (optional)
 
 `docker compose up` brings up the gateway plus Loki, Promtail, and Grafana with
@@ -100,16 +133,17 @@ logs JSON to stdout; Promtail ships it to Loki. No payload data is ever logged
 
 ## What this repo is *not*
 
-This is the dev gateway. It does not contain the production key store, durable
-credit ledger adapter, rate-limit-on-Redis, payments, or MCP surface. The SQL
-ledger/reservation schema lives in the private repo; this public runtime uses a
-process-local meter only when explicitly enabled. See `PUBLISHING.md` for
-exactly what's safe to publish and why.
+This is inspectable runtime source, not the private commercial or data layer. It
+does not contain database migrations, private provider cost bases, customer
+records, deployment secrets, payment fulfillment, or MCP. Development remains
+open/in-memory only when explicitly configured; production modes are durable and
+fail closed. See `PUBLISHING.md` for the exact boundary.
 
 ## A note on rate limits
 
 The free data APIs (DNS, NOAA, RDAP) are still rate-limited by their upstreams
 or by us. The public dev gateway applies a `RATE_LIMIT_PER_MINUTE` network guard
 (default 120) and bounded 10/30/60 route classes keyed by an API-key fingerprint,
-or by source IP in intentional open mode. Production Redis limiting remains a
-separate runtime adapter.
+or by source IP in intentional open mode. Production applies the same classes
+through an atomic Redis rolling window keyed by the authenticated database key
+ID; Redis failure returns 503 rather than bypassing the limit.
