@@ -57,6 +57,8 @@ export const ROUTE_POLICIES: RoutePolicy[] = [
   { route: 'POST /v1/email/validate', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'GET /v1/phone/lookup', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/screenshot', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'POST /v1/ocr/text', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'POST /v1/ocr/expense', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/ai/summarize', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/browser/screenshot', storagePolicy: 'metadata-only', storesPayload: false },
   { route: 'POST /v1/browser/pdf', storagePolicy: 'metadata-only', storesPayload: false },

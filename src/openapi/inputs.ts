@@ -47,6 +47,8 @@ export const INPUT_SCHEMAS: Record<string, InputSchema> = {
 
   'POST /v1/email/validate': object({ email: string({ format: 'email', maxLength: 320 }) }, ['email']),
   'POST /v1/screenshot': object({ url: string({ format: 'uri', maxLength: 2_048 }), format: string({ enum: ['png', 'jpeg', 'webp'], default: 'png' }), full_page: boolean(), viewport_width: integer({ minimum: 320, maximum: 3_840, default: 1_280 }), viewport_height: integer({ minimum: 200, maximum: 2_160, default: 720 }) }, ['url']),
+  'POST /v1/ocr/text': object({ image_base64: string({ minLength: 4, maxLength: 6_990_508, contentEncoding: 'base64' }), format: string({ enum: ['png', 'jpeg'] }) }, ['image_base64', 'format']),
+  'POST /v1/ocr/expense': object({ image_base64: string({ minLength: 4, maxLength: 6_990_508, contentEncoding: 'base64' }), format: string({ enum: ['png', 'jpeg'] }) }, ['image_base64', 'format']),
   'POST /v1/ai/summarize': object({ text: string({ minLength: 1, maxLength: 50_000 }), style: string({ enum: ['concise', 'bullets', 'detailed'], default: 'concise' }), max_output_tokens: integer({ minimum: 32, maximum: 1_024, default: 1_024 }), max_credits: integer({ minimum: 1, maximum: 100, default: 100 }) }, ['text']),
   'POST /v1/browser/screenshot': object({ url: string({ format: 'uri', maxLength: 2_048 }), format: string({ enum: ['png', 'jpeg'], default: 'png' }), full_page: boolean(), viewport_width: integer({ minimum: 320, maximum: 1_920, default: 1_280 }), viewport_height: integer({ minimum: 200, maximum: 1_080, default: 720 }) }, ['url']),
   'POST /v1/browser/pdf': object({ url: string({ format: 'uri', maxLength: 2_048 }) }, ['url']),

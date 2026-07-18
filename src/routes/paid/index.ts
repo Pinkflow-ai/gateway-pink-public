@@ -6,7 +6,7 @@ import { makeError } from '../../lib/errors.js';
 import { runBrowserPaidProvider, runFlatPaidProvider, runMeteredPaidProvider } from '../../lib/paidHandler.js';
 import { parse } from '../../lib/parse.js';
 import type { BrowserMeteredProvider, MeteredProvider, Provider } from '../../providers/_registry.js';
-import { browserScreenshotSchema, browserUrlSchema, emailValidationSchema, phoneLookupQuerySchema, screenshotSchema, summarizeSchema } from '../../schemas/paid.js';
+import { browserScreenshotSchema, browserUrlSchema, emailValidationSchema, OCR_HTTP_BODY_LIMIT, ocrDocumentSchema, phoneLookupQuerySchema, screenshotSchema, summarizeSchema } from '../../schemas/paid.js';
 
 export interface PaidRouteDependencies {
   meter: UsageMeter;
@@ -15,6 +15,8 @@ export interface PaidRouteDependencies {
     email: RuntimeFlatPricing;
     phone: RuntimeFlatPricing;
     screenshot: RuntimeFlatPricing;
+    ocrText: RuntimeFlatPricing;
+    ocrExpense: RuntimeFlatPricing;
     summarize: RuntimeMeteredPricing;
     browserScreenshot: RuntimeBrowserTimePricing;
     browserPdf: RuntimeBrowserTimePricing;
@@ -23,6 +25,8 @@ export interface PaidRouteDependencies {
   emailProvider: Provider<unknown, unknown>;
   phoneProvider: Provider<unknown, unknown>;
   screenshotProvider: Provider<unknown, unknown>;
+  ocrTextProvider: Provider<unknown, unknown>;
+  ocrExpenseProvider: Provider<unknown, unknown>;
   summarizeProvider: MeteredProvider<unknown, unknown>;
   browserScreenshotProvider: BrowserMeteredProvider<unknown, unknown>;
   browserPdfProvider: BrowserMeteredProvider<unknown, unknown>;
@@ -46,6 +50,22 @@ export async function paidRoutes(app: FastifyInstance, deps: PaidRouteDependenci
       input: { url: body.url, format: body.format, fullPage: body.full_page,
         viewportWidth: body.viewport_width, viewportHeight: body.viewport_height },
       pricing: deps.prices.screenshot, meter: deps.meter, identityForRequest: deps.identityForRequest });
+  });
+  app.post('/v1/ocr/text', { bodyLimit: OCR_HTTP_BODY_LIMIT }, async (req, reply) => {
+    const body = parse(ocrDocumentSchema, req.body, req, reply);
+    if (body) await runFlatPaidProvider({
+      req, reply, route: 'POST /v1/ocr/text', provider: deps.ocrTextProvider,
+      input: { imageBase64: body.image_base64, format: body.format },
+      pricing: deps.prices.ocrText, meter: deps.meter, identityForRequest: deps.identityForRequest,
+    });
+  });
+  app.post('/v1/ocr/expense', { bodyLimit: OCR_HTTP_BODY_LIMIT }, async (req, reply) => {
+    const body = parse(ocrDocumentSchema, req.body, req, reply);
+    if (body) await runFlatPaidProvider({
+      req, reply, route: 'POST /v1/ocr/expense', provider: deps.ocrExpenseProvider,
+      input: { imageBase64: body.image_base64, format: body.format },
+      pricing: deps.prices.ocrExpense, meter: deps.meter, identityForRequest: deps.identityForRequest,
+    });
   });
   app.post('/v1/ai/summarize', async (req, reply) => {
     const body = parse(summarizeSchema, req.body, req, reply);

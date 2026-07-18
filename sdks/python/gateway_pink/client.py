@@ -183,6 +183,18 @@ OPERATIONS = {
     "paid": True,
     "creditCeiling": 17
   },
+  "ocrExpense": {
+    "method": "POST",
+    "path": "/v1/ocr/expense",
+    "paid": True,
+    "creditCeiling": 50
+  },
+  "ocrText": {
+    "method": "POST",
+    "path": "/v1/ocr/text",
+    "paid": True,
+    "creditCeiling": 8
+  },
   "screenshot": {
     "method": "POST",
     "path": "/v1/screenshot",
@@ -336,6 +348,12 @@ class GatewayClient:
 
     def email_validate(self, input=None, *, idempotency_key=None, max_credits=None):
         return self.call("emailValidate", input, idempotency_key=idempotency_key, max_credits=max_credits)
+
+    def ocr_expense(self, input=None, *, idempotency_key=None, max_credits=None):
+        return self.call("ocrExpense", input, idempotency_key=idempotency_key, max_credits=max_credits)
+
+    def ocr_text(self, input=None, *, idempotency_key=None, max_credits=None):
+        return self.call("ocrText", input, idempotency_key=idempotency_key, max_credits=max_credits)
 
     def screenshot(self, input=None, *, idempotency_key=None, max_credits=None):
         return self.call("screenshot", input, idempotency_key=idempotency_key, max_credits=max_credits)

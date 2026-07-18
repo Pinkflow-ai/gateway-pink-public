@@ -180,6 +180,18 @@ export const OPERATIONS = {
     "paid": true,
     "creditCeiling": 17
   },
+  "ocrExpense": {
+    "method": "POST",
+    "path": "/v1/ocr/expense",
+    "paid": true,
+    "creditCeiling": 50
+  },
+  "ocrText": {
+    "method": "POST",
+    "path": "/v1/ocr/text",
+    "paid": true,
+    "creditCeiling": 8
+  },
   "screenshot": {
     "method": "POST",
     "path": "/v1/screenshot",
@@ -376,6 +388,14 @@ export class GatewayClient {
 
   emailValidate(input: GatewayInput = {}, options: GatewayRequestOptions = {}): Promise<unknown> {
     return this.call('emailValidate', input, options);
+  }
+
+  ocrExpense(input: GatewayInput = {}, options: GatewayRequestOptions = {}): Promise<unknown> {
+    return this.call('ocrExpense', input, options);
+  }
+
+  ocrText(input: GatewayInput = {}, options: GatewayRequestOptions = {}): Promise<unknown> {
+    return this.call('ocrText', input, options);
   }
 
   screenshot(input: GatewayInput = {}, options: GatewayRequestOptions = {}): Promise<unknown> {

@@ -7,6 +7,7 @@ import { createSummarizeProvider } from '../../providers/ai/openrouter.js';
 import { createEmailValidationProvider } from '../../providers/email/abstract.js';
 import { createPhoneLookupProvider } from '../../providers/phone/twilio.js';
 import { createScreenshotProvider } from '../../providers/screenshot/screenshotone.js';
+import { createOcrExpenseProvider, createOcrTextProvider } from '../../providers/ocr/textract.js';
 import type { PaidRouteDependencies } from './index.js';
 import { createCloudflareBrowserProvider } from '../../providers/browser/cloudflare.js';
 import type { BillingIdentity, UsageMeter } from '../../billing/types.js';
@@ -32,6 +33,8 @@ export function createPaidRouteDependencies(options: PaidRuntimeOptions = {}): P
       email: flatPrice(manifest, 'POST /v1/email/validate'),
       phone: flatPrice(manifest, 'GET /v1/phone/lookup'),
       screenshot: flatPrice(manifest, 'POST /v1/screenshot'),
+      ocrText: flatPrice(manifest, 'POST /v1/ocr/text'),
+      ocrExpense: flatPrice(manifest, 'POST /v1/ocr/expense'),
       summarize: summarizePricing,
       browserScreenshot: browserTimePrice(manifest, 'POST /v1/browser/screenshot'),
       browserPdf: browserTimePrice(manifest, 'POST /v1/browser/pdf'),
@@ -40,6 +43,8 @@ export function createPaidRouteDependencies(options: PaidRuntimeOptions = {}): P
     emailProvider: createEmailValidationProvider(config.abstractEmailApiKey),
     phoneProvider: createPhoneLookupProvider(config.twilioAccountSid, config.twilioAuthToken),
     screenshotProvider: createScreenshotProvider(config.screenshotOneAccessKey),
+    ocrTextProvider: createOcrTextProvider(config.awsTextractRegion, config.awsAiServicesOptOutConfirmed),
+    ocrExpenseProvider: createOcrExpenseProvider(config.awsTextractRegion, config.awsAiServicesOptOutConfirmed),
     summarizeProvider: createSummarizeProvider(
       config.openRouterApiKey,
       summarizePricing.model,

@@ -153,6 +153,14 @@
       "kind": "flat",
       "credits": 17
     },
+    "POST /v1/ocr/expense": {
+      "kind": "flat",
+      "credits": 50
+    },
+    "POST /v1/ocr/text": {
+      "kind": "flat",
+      "credits": 8
+    },
     "POST /v1/screenshot": {
       "kind": "flat",
       "credits": 45

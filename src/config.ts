@@ -42,6 +42,8 @@ const schema = z.object({
   openRouterApiKey: z.string().default(''),
   cloudflareAccountId: z.string().default(''),
   cloudflareApiToken: z.string().default(''),
+  awsTextractRegion: z.enum(['', 'us-west-2']).default(''),
+  awsAiServicesOptOutConfirmed: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -87,6 +89,8 @@ export function parseConfig(environment: ConfigEnvironment): Config {
     openRouterApiKey: environment.OPENROUTER_API_KEY,
     cloudflareAccountId: environment.CLOUDFLARE_ACCOUNT_ID,
     cloudflareApiToken: environment.CLOUDFLARE_API_TOKEN,
+    awsTextractRegion: environment.AWS_TEXTRACT_REGION,
+    awsAiServicesOptOutConfirmed: environment.AWS_AI_SERVICES_OPT_OUT_CONFIRMED,
   });
   if (!parsed.success) {
     throw new Error(`invalid config: ${JSON.stringify(parsed.error.flatten().fieldErrors)}`);
@@ -117,6 +121,9 @@ export function parseConfig(environment: ConfigEnvironment): Config {
   }
   if (value.rateLimitMode === 'redis' && !value.redisUrl) {
     throw new Error('redis rate limiting requires REDIS_URL');
+  }
+  if (value.awsTextractRegion && !value.awsAiServicesOptOutConfirmed) {
+    throw new Error('AWS Textract requires AWS_AI_SERVICES_OPT_OUT_CONFIRMED=true');
   }
   if (value.billingMode === 'memory' && value.devKeys.length === 0) {
     throw new Error('paid billing requires at least one gateway dev key');

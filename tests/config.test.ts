@@ -92,4 +92,15 @@ describe('configuration safety', () => {
     expect(() => parseConfig({ AUTH_MODE: 'postgres' })).toThrow('postgres auth requires DATABASE_URL');
     expect(() => parseConfig({ RATE_LIMIT_MODE: 'redis' })).toThrow('redis rate limiting requires REDIS_URL');
   });
+
+  it('enables Textract only in the priced region with confirmed AI-services opt-out', () => {
+    expect(() => parseConfig({ AWS_TEXTRACT_REGION: 'us-west-2' }))
+      .toThrow('AWS Textract requires AWS_AI_SERVICES_OPT_OUT_CONFIRMED=true');
+    expect(parseConfig({
+      AWS_TEXTRACT_REGION: 'us-west-2', AWS_AI_SERVICES_OPT_OUT_CONFIRMED: 'true',
+    })).toMatchObject({ awsTextractRegion: 'us-west-2', awsAiServicesOptOutConfirmed: true });
+    expect(() => parseConfig({
+      AWS_TEXTRACT_REGION: 'eu-west-1', AWS_AI_SERVICES_OPT_OUT_CONFIRMED: 'true',
+    })).toThrow('invalid config');
+  });
 });

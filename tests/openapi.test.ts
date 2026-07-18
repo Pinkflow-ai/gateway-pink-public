@@ -34,6 +34,10 @@ describe('generated OpenAPI contract', () => {
     expect(ai.requestBody?.content['application/json'].schema.properties).toHaveProperty('max_credits');
     expect(ai['x-gateway-pricing']).toMatchObject({ targetMarginBps: 8000, reserveCredits: 100 });
     expect(document.paths['/v1/compute/hash']!.post!['x-gateway-storage-policy']).toBe('none');
+    const ocr = document.paths['/v1/ocr/text']!.post!;
+    expect(ocr['x-gateway-pricing']).toEqual({ kind: 'flat', credits: 8 });
+    expect(ocr.requestBody?.content['application/json'].schema.properties.image_base64)
+      .toMatchObject({ contentEncoding: 'base64', maxLength: 6_990_508 });
   });
 
   it('keeps the checked-in artifact deterministic', () => {
