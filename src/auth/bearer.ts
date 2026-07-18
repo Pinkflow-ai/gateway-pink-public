@@ -7,8 +7,8 @@ import './types.js';
 
 /**
  * Dev-only bearer auth. Keys come from GATEWAY_DEV_KEYS (comma list in env).
- * The real key store — hashed keys in Postgres with O(1) revocation — is part
- * of the private repo, not this public one.
+ * Production injects the Postgres-backed authenticator from runtime resources;
+ * development can still use the explicitly configured in-memory key list.
  *
  * Public, unauthenticated routes (health, storage-policy) opt out via
  * `routeOptions.config.publicRoute = true`.

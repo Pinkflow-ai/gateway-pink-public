@@ -25,8 +25,8 @@ export function createPaidRouteDependencies(options: PaidRuntimeOptions = {}): P
     : new UnavailableUsageMeter());
   return {
     meter,
-    // The public runtime only has dev bearer auth. Production replaces this
-    // resolver and meter with the private key-store + Postgres RPC adapter.
+    // Production runtime resources inject the Postgres principal resolver and
+    // durable meter. This fallback is limited to local development.
     identityForRequest: options.identityForRequest ?? ((request: FastifyRequest) => request.gatewayPrincipal
       ?? { orgId: 'org-dev', apiKeyId: 'dev-open' }),
     prices: {
