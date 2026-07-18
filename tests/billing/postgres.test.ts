@@ -35,7 +35,7 @@ describe('Postgres usage meter', () => {
       },
       availableCredits: 83,
     });
-    expect(query.mock.calls[0]?.[0]).toContain('reserve_credits');
+    expect(query.mock.calls[0]?.[0]).toContain('reserve_credits_production');
     expect(query.mock.calls[0]?.[1]?.slice(0, 6)).toEqual([
       identity.orgId, identity.apiKeyId, 'POST /v1/email/validate', 'request-1', 17, 'fingerprint-1',
     ]);

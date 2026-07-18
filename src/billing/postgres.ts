@@ -71,7 +71,7 @@ export class PostgresUsageMeter implements UsageMeter {
     try {
       const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
       const result = await this.database.query<ReserveRow>(
-        `select * from reserve_credits(
+        `select * from reserve_credits_production(
           $1::uuid, $2::uuid, $3::text, $4::text, $5::integer, $6::text, $7::timestamptz
         )`,
         [identity.orgId, identity.apiKeyId, route, requestId, credits, inputFingerprint, expiresAt],

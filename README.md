@@ -16,7 +16,8 @@ check themselves instead of taking on trust.
 - `src/auth/` — development bearer auth plus the production HMAC-digest
   Postgres resolver. Plaintext keys are never stored or logged.
 - `src/billing/` — generated-manifest validation, metered pricing math,
-  process-local development billing, and the production Postgres adapter.
+  process-local development billing, production Postgres adapters, and the
+  inspectable Paddle checkout/webhook boundary.
 - `src/ratelimit/` — bounded local limits plus the atomic Redis rolling-window
   adapter used across production instances.
 - `src/policy/` — the per-route storage policy and `GET /v1/storage-policy`.
@@ -99,17 +100,26 @@ them.
 
 The production adapters are inspectable in this repo but are not proof that the
 hosted service is deployed. Production refuses to start unless identity,
-billing, and distributed limits are selected together:
+usage billing, distributed limits, and production Paddle checkout are selected together:
 
 ```bash
 RUNTIME_ENV=production
 AUTH_MODE=postgres
 BILLING_MODE=postgres
 RATE_LIMIT_MODE=redis
+CHECKOUT_MODE=paddle
 DATABASE_URL=postgresql://...
 DATABASE_SSL=require
 REDIS_URL=rediss://...
 GATEWAY_KEY_PEPPER=... # at least 32 random characters
+PADDLE_ENVIRONMENT=production
+PADDLE_API_KEY=...
+PADDLE_WEBHOOK_SECRET=...
+PADDLE_CHECKOUT_URL=https://gateway.pink/checkout # Paddle-approved domain
+PADDLE_PRICE_STARTER=pri_...
+PADDLE_PRICE_STANDARD=pri_...
+PADDLE_PRICE_GROWTH=pri_...
+PADDLE_PRICE_SCALE=pri_...
 ```
 
 API-key lookup uses HMAC-SHA256 of the full key with
@@ -118,6 +128,21 @@ Revoked rows stop authenticating immediately. Paid calls reserve, prepare, and
 settle through the private schema's service-role functions with the authenticated
 organization and key IDs. Free calls write only endpoint/status/duration usage
 metadata. Redis enforces both source-network and authenticated route scopes.
+
+`POST /v1/billing/checkout` accepts only the four server-owned pack IDs and
+records the returned Paddle transaction as a checkout intent before returning
+its hosted URL. Pack subtotals are $11.06/10K, $53.16/50K, $105.79/100K, and
+$526.85/500K credits before applicable tax. Each credit retains $0.001 of API
+usage value after the standard Paddle fee; Paddle discounts must remain disabled
+unless the fulfillment contract is changed deliberately.
+
+`POST /webhooks/paddle` is public only so Paddle can deliver it. It verifies the
+`Paddle-Signature` HMAC against the exact raw bytes with a five-second default
+tolerance, then validates the configured price, subtotal, currency, discount,
+pack, pricing version, organization, and checkout intent. Only a committed
+`transaction.completed` grants credits. Approved refunds and disputes remove
+proportional credits; spent credits become billing debt and block further paid
+calls. Replays are idempotent. Raw webhook payloads are neither logged nor stored.
 
 `GET /health` is liveness-only. `GET /ready` returns 503 until both Postgres and
 Redis respond. A dependency error never converts an authenticated, paid, or
@@ -135,7 +160,9 @@ logs JSON to stdout; Promtail ships it to Loki. No payload data is ever logged
 
 This is inspectable runtime source, not the private commercial or data layer. It
 does not contain database migrations, private provider cost bases, customer
-records, deployment secrets, payment fulfillment, or MCP. Development remains
+records, deployment secrets, private payment tables/migrations, or MCP. It does
+contain the inspectable checkout, signature-verification, event-validation, and
+parameterized fulfillment adapters. Development remains
 open/in-memory only when explicitly configured; production modes are durable and
 fail closed. See `PUBLISHING.md` for the exact boundary.
 

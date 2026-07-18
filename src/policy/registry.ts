@@ -61,17 +61,26 @@ export const ROUTE_POLICIES: RoutePolicy[] = [
   { route: 'POST /v1/browser/markdown', storagePolicy: 'metadata-only', storesPayload: false },
 ];
 
+/** Operational routes are visible in the storage disclosure but are not
+ * customer API products and therefore do not belong in the pricing manifest. */
+export const OPERATIONAL_ROUTE_POLICIES: RoutePolicy[] = [
+  { route: 'POST /v1/billing/checkout', storagePolicy: 'metadata-only', storesPayload: false },
+  { route: 'POST /webhooks/paddle', storagePolicy: 'metadata-only', storesPayload: false },
+];
+
+const ALL_ROUTE_POLICIES = [...ROUTE_POLICIES, ...OPERATIONAL_ROUTE_POLICIES];
+
 /** Routes that carry the X-Gateway-No-Store header. */
 export const NO_STORE_ROUTES = new Set(
-  ROUTE_POLICIES.filter((r) => r.storagePolicy === 'none').map((r) => r.route),
+  ALL_ROUTE_POLICIES.filter((r) => r.storagePolicy === 'none').map((r) => r.route),
 );
 
 /** Lookup by route key. */
 export const policyFor = (route: RouteKey): RoutePolicy | undefined =>
-  ROUTE_POLICIES.find((r) => r.route === route);
+  ALL_ROUTE_POLICIES.find((r) => r.route === route);
 
 /** The machine-readable table surfaced at GET /v1/storage-policy. */
-export const storagePolicyTable = ROUTE_POLICIES.map((r) => ({
+export const storagePolicyTable = ALL_ROUTE_POLICIES.map((r) => ({
   endpoint: r.route,
   storagePolicy: r.storagePolicy,
   storesPayload: r.storesPayload,

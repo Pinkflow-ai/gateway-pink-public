@@ -4,6 +4,10 @@ import { PostgresApiKeyAuthenticator } from '../auth/postgres.js';
 import type { ApiKeyAuthenticator } from '../auth/types.js';
 import { principalForRequest } from '../auth/types.js';
 import { PostgresUsageMeter } from '../billing/postgres.js';
+import { buildPaddleCatalog } from '../billing/paddle/catalog.js';
+import { PaddleClient } from '../billing/paddle/client.js';
+import { PostgresPaddleBillingStore } from '../billing/paddle/postgres.js';
+import { PaddleWebhookProcessor } from '../billing/paddle/processor.js';
 import { PostgresFreeUsageRecorder, type FreeUsageRecorder } from '../billing/freeUsage.js';
 import type { Config } from '../config.js';
 import type { Queryable } from '../database/types.js';
@@ -13,6 +17,7 @@ import type { RateLimitOptions } from '../ratelimit/slidingWindow.js';
 import type { DependencyReadiness } from '../routes/health.js';
 import { createPaidRouteDependencies } from '../routes/paid/runtime.js';
 import type { PaidRouteDependencies } from '../routes/paid/index.js';
+import type { PaddleRouteDependencies } from '../routes/billing/paddle.js';
 
 interface PostgresResource extends Queryable {
   end(): Promise<void>;
@@ -35,6 +40,7 @@ export interface RuntimeResources {
   paidDependencies?: PaidRouteDependencies;
   freeUsageRecorder?: FreeUsageRecorder;
   rateLimitOptions?: RateLimitOptions;
+  paddleDependencies?: PaddleRouteDependencies;
   readiness: () => Promise<DependencyReadiness>;
   paidRoutesState: 'fail-closed' | 'development-meter' | 'durable';
   close: () => Promise<void>;
@@ -105,6 +111,20 @@ export async function createRuntimeResources(
     ? createPaidRouteDependencies({ meter, identityForRequest: principalForRequest })
     : undefined;
   const freeUsageRecorder = postgres ? new PostgresFreeUsageRecorder(postgres) : undefined;
+  const paddleDependencies = config.checkoutMode === 'paddle' && postgres
+    ? (() => {
+        const catalog = buildPaddleCatalog(config);
+        const store = new PostgresPaddleBillingStore(postgres);
+        return {
+          catalog,
+          store,
+          client: new PaddleClient(config),
+          processor: new PaddleWebhookProcessor(catalog, store),
+          webhookSecret: config.paddleWebhookSecret,
+          signatureToleranceSeconds: config.paddleSignatureToleranceSeconds,
+        };
+      })()
+    : undefined;
   const rateLimitOptions = redis
     ? {
         network: new RedisSlidingWindowLimiter(redis, 60_000, 'gateway:rate-limit:network'),
@@ -118,6 +138,7 @@ export async function createRuntimeResources(
     paidDependencies,
     freeUsageRecorder,
     rateLimitOptions,
+    paddleDependencies,
     readiness: async () => ({
       postgres: postgres
         ? await healthy(() => postgres.query('select 1 as ok'), config.dependencyTimeoutMs)

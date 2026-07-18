@@ -1,4 +1,5 @@
 import Fastify, { LogController, type FastifyInstance } from 'fastify';
+import rawBody from 'fastify-raw-body';
 import { bearerAuth } from './auth/bearer.js';
 import type { ApiKeyAuthenticator } from './auth/types.js';
 import { freeUsageRecording, type FreeUsageRecorder } from './billing/freeUsage.js';
@@ -14,6 +15,7 @@ import { computeRoutes } from './routes/compute/index.js';
 import { dnsRoutes } from './routes/dns/resolve.js';
 import { healthRoute, type DependencyReadiness } from './routes/health.js';
 import { paidRoutes, type PaidRouteDependencies } from './routes/paid/index.js';
+import { paddleBillingRoutes, type PaddleRouteDependencies } from './routes/billing/paddle.js';
 import { createPaidRouteDependencies } from './routes/paid/runtime.js';
 import { passwordExposureRoute } from './routes/security/passwordExposure.js';
 import { weatherRoutes } from './routes/weather/us.js';
@@ -28,6 +30,7 @@ export interface AppOptions {
   paidRoutesState?: 'fail-closed' | 'development-meter' | 'durable';
   closeResources?: () => Promise<void>;
   freeUsageRecorder?: FreeUsageRecorder;
+  paddleDependencies?: PaddleRouteDependencies;
 }
 
 export async function buildApp(options: AppOptions = {}): Promise<FastifyInstance> {
@@ -36,6 +39,10 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     genReqId: () => crypto.randomUUID(),
     logController: new LogController({ disableRequestLogging: true }),
   });
+
+  if (options.paddleDependencies) {
+    await app.register(rawBody, { global: false, encoding: false, runFirst: true });
+  }
 
   await registerCors(app, config.corsOrigins);
   await accessLogging(app);
@@ -55,6 +62,9 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   await app.register(whoisRoutes);
   await app.register(passwordExposureRoute, { provider: options.passwordExposureProvider });
   await app.register(paidRoutes, options.paidDependencies ?? createPaidRouteDependencies());
+  if (options.paddleDependencies) {
+    await app.register(paddleBillingRoutes, options.paddleDependencies);
+  }
 
   app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
     const status = err.statusCode && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 500;

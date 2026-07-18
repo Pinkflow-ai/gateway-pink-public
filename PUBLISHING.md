@@ -11,7 +11,7 @@ the boundary clearly.
 | `src/routes/**` | The route handlers. Reading them is the proof — there's no `INSERT`, no `logger.info(req.body)`, no analytics emit carrying the payload. |
 | `src/providers/**` | The provider implementations. Compute ones are pure functions; data ones map upstream output into our own response shape. |
 | `src/auth/**` | Bearer parsing, one-way key digesting, and the parameterized production lookup adapter. It contains no keys or pepper. |
-| `src/billing/**` | Runtime manifest validation, integer metered-cost math, development meter, and parameterized production adapters. It contains no customer data, schema, or private cost basis. |
+| `src/billing/**` | Runtime manifest validation, integer metered-cost math, development meter, Paddle checkout/signature/event validation, and parameterized production adapters. It contains no customer data, schema, secrets, or private cost basis. |
 | `src/ratelimit/**` | Local and Redis rate-limit algorithms. Redis URLs and credentials remain environment-only. |
 | `config/pricing.manifest.json` | Generated customer prices and the model-rate snapshot required for safe preflight. Flat upstream costs and margins are not included. |
 | `src/policy/**` | Storage-policy tags and the `/v1/storage-policy` endpoint. |
@@ -33,6 +33,9 @@ These live in the **private** repo, not here:
   upstream flat-cost economics stay private.
 - **The full catalog strategy.** The public manifest contains customer-facing
   runtime prices, not internal flat-route cost basis or pack strategy.
+- **Payment records and schema.** Public code shows the hosted-checkout and
+  signed-webhook contract, but checkout intents, receipts, purchases,
+  adjustments, balances, debt, and migrations remain private/environment-owned.
 - **Customer / usage data.** None is present. The dev meter holds only an
   in-memory balance and reservations; it writes no events or payloads.
 - **Production secrets.** No real keys, tokens, or upstream credentials are

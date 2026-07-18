@@ -1,13 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { storagePolicyTable, ROUTE_POLICIES, NO_STORE_ROUTES } from '../src/policy/registry.js';
+import {
+  storagePolicyTable, ROUTE_POLICIES, OPERATIONAL_ROUTE_POLICIES, NO_STORE_ROUTES, policyFor,
+} from '../src/policy/registry.js';
 
 describe('storage policy table', () => {
   it('lists every route with its storage posture', () => {
-    expect(storagePolicyTable.length).toBe(ROUTE_POLICIES.length);
+    expect(storagePolicyTable.length).toBe(ROUTE_POLICIES.length + OPERATIONAL_ROUTE_POLICIES.length);
     for (const row of storagePolicyTable) {
       expect(typeof row.endpoint).toBe('string');
       expect(['none', 'metadata-only', 'cached-ttl', 'persisted']).toContain(row.storagePolicy);
     }
+  });
+
+  it('discloses billing and webhook metadata persistence outside the priced API contract', () => {
+    expect(policyFor('POST /v1/billing/checkout')).toEqual({
+      route: 'POST /v1/billing/checkout', storagePolicy: 'metadata-only', storesPayload: false,
+    });
+    expect(policyFor('POST /webhooks/paddle')).toEqual({
+      route: 'POST /webhooks/paddle', storagePolicy: 'metadata-only', storesPayload: false,
+    });
   });
 
   it('marks payload storage as false for every v1 route', () => {

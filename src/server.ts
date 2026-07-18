@@ -13,6 +13,7 @@ async function main(): Promise<void> {
     paidRoutesState: resources.paidRoutesState,
     closeResources: resources.close,
     freeUsageRecorder: resources.freeUsageRecorder,
+    paddleDependencies: resources.paddleDependencies,
   });
 
   try {

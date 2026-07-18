@@ -17,6 +17,7 @@ const schema = z.object({
   corsOrigins: commaList,
   billingMode: z.enum(['off', 'memory', 'postgres']).default('off'),
   rateLimitMode: z.enum(['memory', 'redis']).default('memory'),
+  checkoutMode: z.enum(['off', 'paddle']).default('off'),
   devCreditBalance: z.coerce.number().int().nonnegative().default(0),
   databaseUrl: z.string().default(''),
   databasePoolMax: z.coerce.number().int().positive().max(100).default(10),
@@ -24,6 +25,15 @@ const schema = z.object({
   redisUrl: z.string().default(''),
   apiKeyPepper: z.string().default(''),
   dependencyTimeoutMs: z.coerce.number().int().positive().max(30_000).default(2_000),
+  paddleEnvironment: z.enum(['sandbox', 'production']).default('sandbox'),
+  paddleApiKey: z.string().default(''),
+  paddleWebhookSecret: z.string().default(''),
+  paddleCheckoutUrl: z.string().default(''),
+  paddleSignatureToleranceSeconds: z.coerce.number().int().positive().max(300).default(5),
+  paddlePriceStarter: z.string().default(''),
+  paddlePriceStandard: z.string().default(''),
+  paddlePriceGrowth: z.string().default(''),
+  paddlePriceScale: z.string().default(''),
   pricingManifestPath: z.string().default('./config/pricing.manifest.json'),
   abstractEmailApiKey: z.string().default(''),
   twilioAccountSid: z.string().default(''),
@@ -52,6 +62,7 @@ export function parseConfig(environment: ConfigEnvironment): Config {
       ?? 'https://gateway.pink,http://localhost:4321,http://127.0.0.1:4321',
     billingMode: environment.BILLING_MODE,
     rateLimitMode: environment.RATE_LIMIT_MODE,
+    checkoutMode: environment.CHECKOUT_MODE,
     devCreditBalance: environment.DEV_CREDIT_BALANCE,
     databaseUrl: environment.DATABASE_URL,
     databasePoolMax: environment.DATABASE_POOL_MAX,
@@ -59,6 +70,15 @@ export function parseConfig(environment: ConfigEnvironment): Config {
     redisUrl: environment.REDIS_URL,
     apiKeyPepper: environment.GATEWAY_KEY_PEPPER,
     dependencyTimeoutMs: environment.DEPENDENCY_TIMEOUT_MS,
+    paddleEnvironment: environment.PADDLE_ENVIRONMENT,
+    paddleApiKey: environment.PADDLE_API_KEY,
+    paddleWebhookSecret: environment.PADDLE_WEBHOOK_SECRET,
+    paddleCheckoutUrl: environment.PADDLE_CHECKOUT_URL,
+    paddleSignatureToleranceSeconds: environment.PADDLE_SIGNATURE_TOLERANCE_SECONDS,
+    paddlePriceStarter: environment.PADDLE_PRICE_STARTER,
+    paddlePriceStandard: environment.PADDLE_PRICE_STANDARD,
+    paddlePriceGrowth: environment.PADDLE_PRICE_GROWTH,
+    paddlePriceScale: environment.PADDLE_PRICE_SCALE,
     pricingManifestPath: environment.PRICING_MANIFEST_PATH,
     abstractEmailApiKey: environment.ABSTRACT_EMAIL_API_KEY,
     twilioAccountSid: environment.TWILIO_ACCOUNT_SID,
@@ -81,6 +101,10 @@ export function parseConfig(environment: ConfigEnvironment): Config {
     if (value.apiKeyPepper.length < 32) {
       throw new Error('production requires a key pepper of at least 32 characters');
     }
+    if (value.checkoutMode !== 'paddle') throw new Error('production requires CHECKOUT_MODE=paddle');
+    if (value.paddleEnvironment !== 'production') {
+      throw new Error('production requires PADDLE_ENVIRONMENT=production');
+    }
   }
   if (value.authMode === 'postgres' && !value.databaseUrl) {
     throw new Error('postgres auth requires DATABASE_URL');
@@ -96,6 +120,32 @@ export function parseConfig(environment: ConfigEnvironment): Config {
   }
   if (value.billingMode === 'memory' && value.devKeys.length === 0) {
     throw new Error('paid billing requires at least one gateway dev key');
+  }
+  if (value.checkoutMode === 'paddle') {
+    const required: Array<[string, string]> = [
+      ['PADDLE_API_KEY', value.paddleApiKey],
+      ['PADDLE_WEBHOOK_SECRET', value.paddleWebhookSecret],
+      ['PADDLE_CHECKOUT_URL', value.paddleCheckoutUrl],
+      ['PADDLE_PRICE_STARTER', value.paddlePriceStarter],
+      ['PADDLE_PRICE_STANDARD', value.paddlePriceStandard],
+      ['PADDLE_PRICE_GROWTH', value.paddlePriceGrowth],
+      ['PADDLE_PRICE_SCALE', value.paddlePriceScale],
+    ];
+    for (const [name, entry] of required) {
+      if (!entry) throw new Error(`Paddle checkout requires ${name}`);
+    }
+    let checkoutUrl: URL;
+    try {
+      checkoutUrl = new URL(value.paddleCheckoutUrl);
+    } catch {
+      throw new Error('PADDLE_CHECKOUT_URL must be an https URL');
+    }
+    if (checkoutUrl.protocol !== 'https:') {
+      throw new Error('PADDLE_CHECKOUT_URL must be an https URL');
+    }
+    if (value.billingMode !== 'postgres') {
+      throw new Error('Paddle checkout requires BILLING_MODE=postgres');
+    }
   }
   return value;
 }

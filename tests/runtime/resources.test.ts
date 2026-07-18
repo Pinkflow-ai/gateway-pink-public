@@ -7,9 +7,18 @@ const productionConfig = parseConfig({
   AUTH_MODE: 'postgres',
   BILLING_MODE: 'postgres',
   RATE_LIMIT_MODE: 'redis',
+  CHECKOUT_MODE: 'paddle',
   DATABASE_URL: 'postgresql://gateway:test@db.example/gateway',
   REDIS_URL: 'redis://cache.example:6379',
   GATEWAY_KEY_PEPPER: 'p'.repeat(32),
+  PADDLE_ENVIRONMENT: 'production',
+  PADDLE_API_KEY: 'pdl_live_secret',
+  PADDLE_WEBHOOK_SECRET: 'notification-secret',
+  PADDLE_CHECKOUT_URL: 'https://gateway.pink/checkout',
+  PADDLE_PRICE_STARTER: 'pri_starter',
+  PADDLE_PRICE_STANDARD: 'pri_standard',
+  PADDLE_PRICE_GROWTH: 'pri_growth',
+  PADDLE_PRICE_SCALE: 'pri_scale',
 });
 
 describe('production runtime resources', () => {
@@ -37,6 +46,10 @@ describe('production runtime resources', () => {
     });
     await expect(resources.readiness()).resolves.toEqual({ postgres: true, redis: true });
     expect(resources.paidDependencies?.meter.constructor.name).toBe('PostgresUsageMeter');
+    expect(resources.paddleDependencies?.catalog.byPackId('scale')).toMatchObject({
+      credits: 500_000, subtotalCents: 52_685,
+    });
+    expect(resources.paddleDependencies?.store.constructor.name).toBe('PostgresPaddleBillingStore');
     expect(resources.rateLimitOptions?.network?.constructor.name).toBe('RedisSlidingWindowLimiter');
 
     await resources.close();
