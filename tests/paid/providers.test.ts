@@ -102,7 +102,7 @@ describe('paid provider adapters', () => {
     expect(request.provider).toEqual({
       sort: 'price',
       data_collection: 'deny',
-      max_price: { prompt: 0.1, completion: 0.4 },
+      max_price: { prompt: 0.0000001, completion: 0.0000004 },
     });
   });
 

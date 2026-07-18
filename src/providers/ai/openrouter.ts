@@ -13,6 +13,10 @@ interface OpenRouterPriceCeiling {
   completionUsdMicrosPerMillionTokens: number;
 }
 
+function microsPerMillionTokensToUsdPerToken(value: number): number {
+  return value / 1_000_000_000_000;
+}
+
 export function createSummarizeProvider(
   apiKey: string,
   model: string,
@@ -38,8 +42,12 @@ export function createSummarizeProvider(
             sort: 'price',
             data_collection: 'deny',
             max_price: {
-              prompt: priceCeiling.promptUsdMicrosPerMillionTokens / 1_000_000,
-              completion: priceCeiling.completionUsdMicrosPerMillionTokens / 1_000_000,
+              prompt: microsPerMillionTokensToUsdPerToken(
+                priceCeiling.promptUsdMicrosPerMillionTokens,
+              ),
+              completion: microsPerMillionTokensToUsdPerToken(
+                priceCeiling.completionUsdMicrosPerMillionTokens,
+              ),
             },
           },
           messages: [
